@@ -199,7 +199,7 @@ function main() {
     if (opt('json')) {
       const out = typeof opt('json') === 'string' ? opt('json') : path.join(ROOT, `tools/out/level${String(def.id).padStart(2, '0')}.path.json`);
       fs.mkdirSync(path.dirname(out), { recursive: true });
-      fs.writeFileSync(out, JSON.stringify({ id: def.id, K, pts: rp.pts }));
+      fs.writeFileSync(out, JSON.stringify({ id: def.id, K, actions: res.actions.map(Number), pts: rp.pts }));
       console.log('  path written to ' + path.relative(ROOT, out));
     }
     console.log(`  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);

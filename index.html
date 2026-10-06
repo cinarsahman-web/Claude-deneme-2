@@ -3,740 +3,391 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-/* Layout: full-bleed canvas stage, slim HUD strip on top, modal panels over the stage */
+/* Layout: full-bleed canvas stage; menus are DOM screens layered over the live canvas; a slim HUD strip during play */
 :root {
   --ink: #070a22;
   --panel: #10163f;
+  --panel-2: #182060;
   --mist: #d3dcff;
   --dim: #8d98d6;
   --volt: #ffd23f;
   --glow: #56f0ff;
   --hot: #ff3d9a;
+  --leaf: #5dff9d;
+  --coin: #f5c542;
   --display: "Bungee", "Arial Black", Impact, sans-serif;
   --body: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
 }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--ink); color: var(--mist);
   font-family: var(--body); overflow: hidden;
   touch-action: none; user-select: none; -webkit-user-select: none;
 }
-[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
 #stage { position: fixed; inset: 0; }
-canvas { display: block; width: 100%; height: 100%; cursor: pointer; }
+canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--glow); outline-offset: 3px; }
 
+/* ---------- HUD ---------- */
 .hud {
   position: fixed; left: 0; right: 0; top: 0;
-  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 0;
-  display: flex; align-items: center; gap: 12px; pointer-events: none;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 0;
+  display: flex; align-items: center; gap: 10px; pointer-events: none;
 }
 .bar {
   flex: 1; max-width: 420px; margin-inline: auto; height: 14px;
   border: 2px solid rgba(255,255,255,.85); border-radius: 8px;
   background: rgba(0,0,0,.35); overflow: hidden; position: relative;
 }
-.bar > i {
-  position: absolute; inset: 0 auto 0 0; width: 0%;
-  background: linear-gradient(90deg, var(--glow), var(--volt));
-}
-.pct {
-  font-family: var(--display); font-size: 15px; min-width: 3.4em;
-  font-variant-numeric: tabular-nums; color: #fff;
-  text-shadow: 0 0 8px rgba(86,240,255,.7);
-}
+.bar > i { position: absolute; inset: 0 auto 0 0; width: 0%; background: linear-gradient(90deg, var(--glow), var(--volt)); }
+.bar.practice > i { background: linear-gradient(90deg, #2de0b0, var(--leaf)); }
+.pct { font-family: var(--display); font-size: 15px; min-width: 3.3em; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 0 8px rgba(86,240,255,.7); }
+.hud-coins { display: flex; gap: 4px; }
+.hud-coins i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(245,197,66,.6); background: rgba(0,0,0,.3); }
+.hud-coins i.on { background: var(--coin); border-color: #fff3b0; box-shadow: 0 0 8px var(--coin); }
 .icon-btn {
-  pointer-events: auto; width: 40px; height: 40px; flex: none;
-  border: 2px solid rgba(255,255,255,.8); border-radius: 10px;
-  background: rgba(7,10,34,.55); color: #fff; font: 700 16px var(--body);
-  cursor: pointer; display: grid; place-items: center;
+  pointer-events: auto; width: 42px; height: 42px; flex: none;
+  border: 2px solid rgba(255,255,255,.8); border-radius: 12px;
+  background: rgba(7,10,34,.6); color: #fff; font-weight: 800; font-size: 15px;
+  cursor: pointer; display: grid; place-items: center; padding: 0;
 }
-.icon-btn:focus-visible, .btn:focus-visible { outline: 3px solid var(--glow); outline-offset: 3px; }
+.icon-btn svg { width: 20px; height: 20px; }
+.practice-pad {
+  position: fixed; left: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex; gap: 10px;
+}
+.practice-pad .icon-btn { width: 54px; height: 54px; border-radius: 16px; }
+.practice-pad #cpAdd { border-color: var(--leaf); color: var(--leaf); }
+.practice-pad #cpDel { border-color: var(--hot); color: var(--hot); }
+.practice-tag {
+  position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  font-family: var(--display); font-size: 13px; color: var(--leaf); letter-spacing: .06em; pointer-events: none;
+}
 
-.overlay {
-  position: fixed; inset: 0; display: grid; place-items: center;
-  padding-inline: 16px; background: rgba(4,6,24,.55);
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 64px); transform: translateX(-50%);
+  max-width: calc(100% - 32px); pointer-events: none; z-index: 30;
+  display: grid; gap: 8px; justify-items: center;
 }
-.card {
-  box-sizing: border-box; width: min(100%, 440px); text-align: center;
-  background: linear-gradient(180deg, var(--panel), var(--ink));
-  border: 3px solid var(--glow); border-radius: 18px;
-  box-shadow: 0 0 0 4px rgba(86,240,255,.15), 0 0 40px rgba(86,240,255,.35);
-  padding: 28px 22px 24px; display: grid; gap: 14px;
+.toast div {
+  font-family: var(--display); font-size: 16px; color: #1a1300; text-align: center;
+  background: linear-gradient(180deg, #ffe680, var(--volt)); border: 2px solid #fff; border-radius: 12px;
+  padding: 8px 16px; box-shadow: 0 4px 0 #a8560c; animation: pop .25s ease-out;
 }
-.card h1, .card h2 {
-  margin: 0; font-family: var(--display); font-weight: 400; color: var(--volt);
-  text-wrap: balance; letter-spacing: .02em;
-  text-shadow: 0 3px 0 #b5520b, 0 0 22px rgba(255,210,63,.55);
+.toast div.good { background: linear-gradient(180deg, #a6ffcb, var(--leaf)); box-shadow: 0 4px 0 #1d8a4c; }
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* ---------- Screens ---------- */
+.screen {
+  position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  box-sizing: border-box; background: linear-gradient(180deg, rgba(4,6,24,.35), rgba(4,6,24,.72));
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
 }
-.card h1 { font-size: clamp(32px, 9vw, 46px); line-height: 1; }
-.card h2 { font-size: clamp(26px, 7vw, 34px); line-height: 1.05; }
-.sub { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .16em; color: var(--glow); font-weight: 600; }
-.card p { margin: 0; line-height: 1.5; color: var(--mist); }
-.keys { display: grid; gap: 6px; font-size: 14px; color: var(--dim); text-align: left; margin: 0 auto; padding: 0; list-style: none; }
+.screen.dense { background: rgba(5,8,30,.86); }
+.topbar { width: 100%; max-width: 760px; display: flex; align-items: center; gap: 12px; }
+.topbar h2 { flex: 1; margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(22px, 6vw, 30px); color: var(--volt); text-shadow: 0 3px 0 #b5520b; }
+.back {
+  border: 2px solid rgba(255,255,255,.8); background: rgba(7,10,34,.6); border-radius: 12px;
+  padding: 8px 14px; font-weight: 600; cursor: pointer;
+}
+.chip { font-family: var(--display); font-size: 14px; color: #fff; background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.35); border-radius: 999px; padding: 4px 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip.coin { color: var(--coin); }
+
+.main-wrap { margin-block: auto; display: grid; gap: 22px; justify-items: center; text-align: center; }
+.logo {
+  margin: 0; font-family: var(--display); font-weight: 400; line-height: .92;
+  font-size: clamp(44px, 13vw, 92px); color: var(--volt); letter-spacing: .02em; text-wrap: balance;
+  text-shadow: 0 5px 0 #b5520b, 0 0 36px rgba(255,210,63,.45);
+}
+.logo small { display: block; font-size: .3em; color: var(--glow); text-shadow: 0 0 14px rgba(86,240,255,.7); letter-spacing: .2em; margin-top: 10px; }
+.play-big {
+  width: clamp(110px, 30vw, 150px); aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+  border: 5px solid #fff; background: radial-gradient(circle at 35% 30%, #a6ffcb, var(--leaf) 45%, #1d8a4c);
+  box-shadow: 0 7px 0 #0f5a30, 0 0 40px rgba(93,255,157,.45); display: grid; place-items: center; padding: 0;
+}
+.play-big svg { width: 46%; height: 46%; margin-left: 8%; }
+.play-big:active { transform: translateY(4px); box-shadow: 0 3px 0 #0f5a30; }
+.row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.btn {
+  font-family: var(--display); font-size: 18px; color: #1a1300; cursor: pointer;
+  background: linear-gradient(180deg, #ffe680, var(--volt) 55%, #f0a91c);
+  border: 3px solid #fff; border-radius: 14px; padding: 11px 24px; box-shadow: 0 5px 0 #a8560c;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a8560c; }
+.btn.blue { color: #fff; background: linear-gradient(180deg, #8ff6ff, #2fb7d6 60%, #1d7fa8); box-shadow: 0 5px 0 #11506b; }
+.btn.pink { color: #fff; background: linear-gradient(180deg, #ff9ad1, var(--hot)); box-shadow: 0 5px 0 #8c1350; }
+.btn.green { color: #08321b; background: linear-gradient(180deg, #a6ffcb, var(--leaf) 60%, #2bbd6a); box-shadow: 0 5px 0 #1d8a4c; }
+.btn.small { font-size: 15px; padding: 9px 16px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.hint { margin: 0; color: var(--dim); font-size: 14px; }
+
+/* Level select */
+.carousel { width: 100%; max-width: 760px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-block: auto; }
+.arrow {
+  width: 46px; height: 64px; border-radius: 14px; border: 2px solid rgba(255,255,255,.8);
+  background: rgba(7,10,34,.6); font-family: var(--display); font-size: 30px; cursor: pointer; padding: 0;
+}
+.lvcard {
+  min-width: 0; border-radius: 22px; border: 3px solid #fff; padding: 20px 18px;
+  background: linear-gradient(160deg, hsl(var(--h, 228) 70% 34%), hsl(calc(var(--h, 228) + 25) 75% 14%));
+  box-shadow: 0 8px 0 rgba(0,0,0,.45), 0 0 34px hsl(var(--h, 228) 90% 60% / .35);
+  display: grid; gap: 14px; touch-action: pan-y;
+}
+.lv-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.lv-face { width: 64px; height: 64px; flex: none; }
+.lv-title { min-width: 0; display: grid; gap: 4px; }
+.lv-title h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(22px, 6vw, 32px); line-height: 1.05; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.45); overflow-wrap: anywhere; }
+.lv-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; font-weight: 600; }
+.lv-diff { text-transform: uppercase; letter-spacing: .1em; }
+.lv-num { color: rgba(255,255,255,.7); letter-spacing: .1em; text-transform: uppercase; }
+.lv-stars { font-family: var(--display); color: var(--volt); }
+.lv-bars { display: grid; gap: 8px; }
+.lv-bar { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 3.2em; align-items: center; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.lv-bar .bar { max-width: none; margin: 0; height: 16px; }
+.lv-bar b { font-family: var(--display); font-weight: 400; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.lv-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.coin-row { display: flex; gap: 6px; }
+.coin-row i { width: 26px; height: 26px; border-radius: 50%; border: 3px dashed rgba(255,255,255,.45); }
+.coin-row i.on { border: 3px solid #8a5a00; background: radial-gradient(circle at 40% 35%, #fff3b0, var(--coin) 55%); box-shadow: 0 0 10px rgba(245,197,66,.7); }
+.lv-mech { display: flex; gap: 6px; flex-wrap: wrap; }
+.lv-mech span { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.3); }
+.dots { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.dots button { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; background: transparent; padding: 0; cursor: pointer; }
+.dots button.on { background: var(--volt); border-color: var(--volt); }
+.dots button.done { border-color: var(--leaf); }
+
+/* Garage */
+.garage { width: 100%; max-width: 760px; display: grid; gap: 14px; }
+.preview { width: 100%; height: 120px; border-radius: 18px; border: 2px solid rgba(255,255,255,.4); background: rgba(0,0,0,.35); display: block; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs button { flex: 1 1 auto; border: 2px solid rgba(255,255,255,.5); background: rgba(7,10,34,.6); border-radius: 12px; padding: 9px 10px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { background: var(--volt); color: #1a1300; border-color: #fff; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px; }
+.cell {
+  position: relative; aspect-ratio: 1; max-width: 100%; border-radius: 14px; border: 2px solid rgba(255,255,255,.35);
+  background: rgba(0,0,0,.35); cursor: pointer; padding: 6px; display: grid; place-items: center;
+}
+.cell canvas { width: 100%; height: 100%; }
+.cell.sel { border-color: var(--volt); box-shadow: 0 0 0 3px rgba(255,210,63,.45); }
+.cell.locked { cursor: not-allowed; }
+.cell.locked canvas, .cell.locked .swatch { opacity: .25; }
+.cell .lock { position: absolute; inset: auto 4px 4px 4px; font-size: 11px; font-weight: 800; text-align: center; color: #fff; background: rgba(0,0,0,.65); border-radius: 6px; padding: 1px 2px; }
+.swatch { width: 78%; height: 78%; border-radius: 50%; border: 3px solid #14101f; }
+.note { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.5; }
+
+/* Settings & stats */
+.panel { width: 100%; max-width: 560px; display: grid; gap: 10px; }
+.set-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: rgba(0,0,0,.3); border: 2px solid rgba(255,255,255,.2); border-radius: 14px; padding: 12px 14px;
+}
+.set-row label { font-weight: 600; }
+.set-row small { display: block; color: var(--dim); font-weight: 400; font-size: 13px; margin-top: 2px; }
+.set-row input[type=range] { width: min(220px, 100%); accent-color: var(--volt); }
+.switch { appearance: none; width: 52px; height: 30px; border-radius: 999px; background: #2a2f5c; border: 2px solid rgba(255,255,255,.6); position: relative; cursor: pointer; flex: none; margin: 0; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .15s; }
+.switch:checked { background: var(--leaf); }
+.switch:checked::after { left: 25px; }
+.stats-grid { width: 100%; max-width: 560px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: rgba(0,0,0,.3); border: 2px solid rgba(255,255,255,.2); border-radius: 14px; padding: 12px 14px; display: grid; gap: 4px; }
+.stat span { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--dim); font-weight: 600; }
+.stat strong { font-family: var(--display); font-weight: 400; font-size: 24px; color: #fff; font-variant-numeric: tabular-nums; }
+.keys { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; color: var(--dim); }
 .keys b { color: #fff; font-weight: 600; }
-.stats { display: flex; justify-content: center; gap: 22px; font-variant-numeric: tabular-nums; }
+
+/* Overlays (pause / complete) */
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; padding-inline: 16px; background: rgba(4,6,24,.6); overflow-y: auto; z-index: 20; }
+.card {
+  box-sizing: border-box; width: min(100%, 460px); text-align: center; margin-block: 16px;
+  background: linear-gradient(180deg, var(--panel), var(--ink));
+  border: 3px solid var(--glow); border-radius: 20px;
+  box-shadow: 0 0 0 4px rgba(86,240,255,.15), 0 0 40px rgba(86,240,255,.35);
+  padding: 24px 20px 22px; display: grid; gap: 14px;
+}
+.card h2 { margin: 0; font-family: var(--display); font-weight: 400; color: var(--volt); font-size: clamp(24px, 7vw, 32px); line-height: 1.05; text-wrap: balance; text-shadow: 0 3px 0 #b5520b, 0 0 22px rgba(255,210,63,.5); }
+.sub { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .16em; color: var(--glow); font-weight: 600; }
+.stats { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .stats div { display: grid; gap: 2px; }
 .stats span { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); }
 .stats strong { font-family: var(--display); font-weight: 400; font-size: 22px; color: #fff; }
-.row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-.btn {
-  font-family: var(--display); font-size: 20px; color: #1a1300;
-  background: linear-gradient(180deg, #ffe680, var(--volt) 55%, #f0a91c);
-  border: 3px solid #fff; border-radius: 14px; padding: 12px 28px;
-  box-shadow: 0 5px 0 #a8560c; cursor: pointer;
+.card .lv-bars { text-align: left; }
+.vol { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; text-align: left; font-size: 13px; font-weight: 600; }
+.vol input { width: 100%; accent-color: var(--volt); }
+.earned { font-family: var(--display); font-size: 22px; color: var(--volt); }
+.unlocks { display: grid; gap: 6px; }
+.unlocks div { font-weight: 600; color: var(--leaf); }
+.confirm { display: grid; gap: 10px; background: rgba(255,61,154,.12); border: 2px solid var(--hot); border-radius: 14px; padding: 12px; }
+
+@media (max-width: 420px) {
+  .arrow { width: 36px; height: 54px; font-size: 24px; }
+  .carousel { gap: 6px; }
+  .lvcard { padding: 16px 14px; }
+  .lv-face { width: 52px; height: 52px; }
+  .btn { font-size: 16px; padding: 10px 18px; }
 }
-.btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a8560c; }
-.btn.alt { color: #fff; background: linear-gradient(180deg, #ff7cc0, var(--hot)); box-shadow: 0 5px 0 #8c1350; font-size: 16px; padding: 10px 20px; }
-@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .btn:active, .play-big:active { transform: none; }
+  .toast div { animation: none; }
+  .switch::after { transition: none; }
+}
 </style>
 
-<div id="stage"><canvas id="cv" aria-label="Oyun alanı"></canvas></div>
+<div id="stage"><canvas id="cv" aria-label="Oyun alanı" tabindex="-1"></canvas></div>
 
-<div class="hud">
-  <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+<div class="hud" id="hud" hidden>
+  <button class="icon-btn" id="pauseBtn" aria-label="Duraklat"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="4" height="14" fill="currentColor"/><rect x="12" y="3" width="4" height="14" fill="currentColor"/></svg></button>
+  <div class="bar" id="hudBar" aria-hidden="true"><i id="barFill"></i></div>
   <div class="pct" id="pct">0%</div>
-  <button class="icon-btn" id="muteBtn" aria-label="Sesi kapat">♪</button>
-  <button class="icon-btn" id="pauseBtn" aria-label="Duraklat">❚❚</button>
+  <div class="hud-coins" id="hudCoins" aria-label="Toplanan gizli paralar"><i></i><i></i><i></i></div>
 </div>
+<div class="practice-pad" id="practicePad" hidden>
+  <button class="icon-btn" id="cpAdd" aria-label="Kontrol noktası koy (Z)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 18 10 10 18 2 10Z" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M10 6.5 13.5 10 10 13.5 6.5 10Z" fill="currentColor"/></svg></button>
+  <button class="icon-btn" id="cpDel" aria-label="Son kontrol noktasını sil (X)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4 16 16M16 4 4 16" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
+</div>
+<div class="practice-tag" id="practiceTag" hidden>PRATİK MODU</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<div class="overlay" id="menu">
-  <div class="card">
-    <p class="sub">Bölüm 1 · Neon Basamaklar</p>
-    <h1>Kare Koşusu</h1>
-    <ul class="keys">
-      <li><b>Boşluk, ↑ ya da dokun:</b> zıpla (basılı tutarsan art arda zıplar)</li>
-      <li><b>Sarı halka:</b> havadayken üstündeyken bas, tekrar zıpla</li>
-      <li><b>Pembe kapı:</b> gemiye dönüşürsün, basılı tut ve yüksel</li>
-      <li><b>Esc / P:</b> duraklat</li>
-    </ul>
-    <div class="stats"><div><span>En iyi</span><strong id="bestMenu">0%</strong></div></div>
-    <div class="row"><button class="btn" id="playBtn">Oyna</button></div>
+<!-- Main menu -->
+<section class="screen" id="scrMain">
+  <div class="main-wrap">
+    <h1 class="logo">Kare Koşusu<small id="mCount">11 bölüm · 7 mod</small></h1>
+    <button class="play-big" id="mPlay" aria-label="Bölümleri seç ve oyna"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2 18 10 4 18Z" fill="#fff" stroke="#14101f" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+    <div class="row">
+      <button class="btn blue small" id="mGarage">Karakter</button>
+      <button class="btn pink small" id="mSettings">Ayarlar</button>
+      <button class="btn small" id="mStats">İstatistik</button>
+    </div>
+    <div class="row"><span class="chip" id="mStars">★ 0/0</span><span class="chip coin" id="mCoins">● 0/0</span></div>
   </div>
-</div>
+</section>
 
-<div class="overlay" id="pauseScr" hidden>
+<!-- Level select -->
+<section class="screen" id="scrLevels" hidden>
+  <header class="topbar"><button class="back" id="lvBack">← Menü</button><h2>Bölümler</h2><span class="chip" id="lvStarsChip">★ 0</span></header>
+  <div class="carousel">
+    <button class="arrow" id="lvPrev" aria-label="Önceki bölüm">‹</button>
+    <article class="lvcard" id="lvCard" aria-live="polite"></article>
+    <button class="arrow" id="lvNext" aria-label="Sonraki bölüm">›</button>
+  </div>
+  <div class="dots" id="lvDots" role="group" aria-label="Bölüm sayfaları"></div>
+  <p class="hint">← → ile gez, Enter ile oyna</p>
+</section>
+
+<!-- Garage -->
+<section class="screen dense" id="scrGarage" hidden>
+  <header class="topbar"><button class="back" id="gBack">← Menü</button><h2>Karakter</h2><span class="chip" id="gStars">★ 0</span><span class="chip coin" id="gCoins">● 0</span></header>
+  <div class="garage">
+    <canvas class="preview" id="gPreview" aria-label="Karakterin tüm modlarda önizlemesi"></canvas>
+    <div class="tabs" role="tablist" aria-label="Özelleştirme">
+      <button role="tab" id="tabIcon" aria-selected="true" data-tab="icon">Simge</button>
+      <button role="tab" id="tabC1" aria-selected="false" data-tab="c1">Ana renk</button>
+      <button role="tab" id="tabC2" aria-selected="false" data-tab="c2">İkinci renk</button>
+      <button role="tab" id="tabTrail" aria-selected="false" data-tab="trail">İz</button>
+    </div>
+    <div class="grid" id="gGrid" role="listbox" aria-label="Seçenekler"></div>
+    <p class="note" id="gNote">Kilitli parçalar bölüm bitirip yıldız ve gizli para topladıkça açılır.</p>
+  </div>
+</section>
+
+<!-- Settings -->
+<section class="screen dense" id="scrSettings" hidden>
+  <header class="topbar"><button class="back" id="sBack">← Menü</button><h2>Ayarlar</h2></header>
+  <div class="panel">
+    <div class="set-row"><label for="setMusic">Müzik</label><input type="range" id="setMusic" min="0" max="100" step="5"></div>
+    <div class="set-row"><label for="setSfx">Efektler</label><input type="range" id="setSfx" min="0" max="100" step="5"></div>
+    <div class="set-row"><label for="setPct">Yüzdeyi göster<small>Oyun sırasında ilerleme yüzdesi</small></label><input type="checkbox" class="switch" id="setPct"></div>
+    <div class="set-row"><label for="setLow">Düşük detay<small>Parlama ve arka plan desenini kapatır, yavaş cihazlarda akıcılaştırır</small></label><input type="checkbox" class="switch" id="setLow"></div>
+    <div class="set-row"><label for="setAutoCp">Otomatik kontrol noktası<small>Pratik modunda birkaç saniyede bir güvenli yere koyar</small></label><input type="checkbox" class="switch" id="setAutoCp"></div>
+    <div class="set-row"><label for="setShake">Ekran sarsıntısı<small>Ölünce ekran sallanır</small></label><input type="checkbox" class="switch" id="setShake"></div>
+    <div class="set-row" style="display:grid">
+      <ul class="keys">
+        <li><b>Boşluk, ↑, W, tıklama, dokunma:</b> zıpla / uç</li>
+        <li><b>Esc veya P:</b> duraklat</li>
+        <li><b>Z / X:</b> pratik modunda kontrol noktası koy / sil</li>
+      </ul>
+    </div>
+    <div class="set-row">
+      <label>İlerlemeyi sıfırla<small>Rekorlar, paralar, yıldızlar ve karakter seçimi silinir</small></label>
+      <button class="btn pink small" id="resetBtn">Sıfırla</button>
+    </div>
+    <div class="confirm" id="resetConfirm" hidden>
+      <p class="note" style="color:#fff">Bütün ilerlemen silinecek. Bu geri alınamaz.</p>
+      <div class="row"><button class="btn pink small" id="resetYes">Evet, sil</button><button class="btn blue small" id="resetNo">Vazgeç</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<section class="screen dense" id="scrStats" hidden>
+  <header class="topbar"><button class="back" id="stBack">← Menü</button><h2>İstatistik</h2></header>
+  <div class="stats-grid" id="statsGrid"></div>
+</section>
+
+<!-- Pause -->
+<div class="overlay" id="scrPause" hidden>
   <div class="card">
+    <p class="sub" id="pLevel">Bölüm</p>
     <h2>Duraklatıldı</h2>
-    <div class="stats">
-      <div><span>İlerleme</span><strong id="pausePct">0%</strong></div>
-      <div><span>Deneme</span><strong id="pauseAtt">1</strong></div>
+    <div class="lv-bars">
+      <div class="lv-bar"><span>Normal</span><div class="bar"><i id="pBarN"></i></div><b id="pPctN">0%</b></div>
+      <div class="lv-bar"><span>Pratik</span><div class="bar practice"><i id="pBarP"></i></div><b id="pPctP">0%</b></div>
+    </div>
+    <div class="stats"><div><span>Deneme</span><strong id="pAtt">1</strong></div><div><span>Şu an</span><strong id="pNow">0%</strong></div></div>
+    <div class="row">
+      <button class="btn green" id="pResume">Devam</button>
+      <button class="btn blue small" id="pPractice">Pratik modu</button>
     </div>
     <div class="row">
-      <button class="btn" id="resumeBtn">Devam</button>
-      <button class="btn alt" id="restartBtn">Baştan</button>
+      <button class="btn pink small" id="pRestart">Baştan</button>
+      <button class="btn small" id="pExit">Bölümlere dön</button>
+    </div>
+    <div class="vol">
+      <label for="pMusic">Müzik</label><input type="range" id="pMusic" min="0" max="100" step="5">
+      <label for="pSfx">Efekt</label><input type="range" id="pSfx" min="0" max="100" step="5">
     </div>
   </div>
 </div>
 
-<div class="overlay" id="winScr" hidden>
+<!-- Level complete -->
+<div class="overlay" id="scrComplete" hidden>
   <div class="card">
-    <p class="sub">Tebrikler</p>
-    <h2>Bölüm tamamlandı!</h2>
+    <p class="sub" id="cSub">Tebrikler</p>
+    <h2 id="cTitle">Bölüm tamamlandı!</h2>
+    <div class="earned" id="cEarned"></div>
+    <div class="coin-row" id="cCoins" style="justify-content:center"><i></i><i></i><i></i></div>
     <div class="stats">
-      <div><span>Deneme</span><strong id="winAtt">1</strong></div>
-      <div><span>Zıplama</span><strong id="winJumps">0</strong></div>
-      <div><span>Süre</span><strong id="winTime">0s</strong></div>
+      <div><span>Deneme</span><strong id="cAtt">1</strong></div>
+      <div><span>Zıplama</span><strong id="cJumps">0</strong></div>
+      <div><span>Süre</span><strong id="cTime">0s</strong></div>
     </div>
-    <div class="row"><button class="btn" id="againBtn">Tekrar oyna</button></div>
+    <div class="unlocks" id="cUnlocks"></div>
+    <div class="row">
+      <button class="btn green" id="cNext">Sonraki bölüm</button>
+    </div>
+    <div class="row">
+      <button class="btn blue small" id="cAgain">Tekrar</button>
+      <button class="btn small" id="cLevels">Bölümler</button>
+    </div>
   </div>
 </div>
 
-<script>
-// PHYSICS START
-// Units: 1 = one block. Speeds in blocks per second.
-const DT = 1 / 240;
-const SPEED = 10.4, G = 95, JUMP = 20.5, PAD = 27, ORB = 19, MAXFALL = 30;
-const SHIP_ACC = 42, SHIP_MAX = 9.5;
-
-function buildLevel() {
-  const L = { blocks: [], spikes: [], pads: [], orbs: [], portals: [], end: 0 };
-  const blk = (x, y, w = 1, h = 1) => L.blocks.push({ x, y, w, h });
-  const spk = (x, y = 0, n = 1, flip = false) => { for (let i = 0; i < n; i++) L.spikes.push({ x: x + i, y, flip }); };
-  const pad = (x, y = 0) => L.pads.push({ x, y, id: L.pads.length });
-  const orb = (x, y) => L.orbs.push({ x, y, id: L.orbs.length });
-  const portal = (x, mode, ceil = Infinity) => L.portals.push({ x, mode, ceil });
-
-  // Isınma
-  spk(16);
-  spk(26, 0, 2);
-  spk(36, 0, 3);
-  // Merdiven
-  blk(46, 0, 3, 1); blk(49, 0, 3, 2); blk(52, 0, 3, 3);
-  spk(55, 0, 4);
-  blk(62, 0, 2, 1); spk(64, 0, 2); blk(66, 0, 2, 1);
-  spk(72);
-  // Zıplatıcı ve asılı platform
-  pad(78);
-  spk(79, 0, 13);
-  blk(81, 2, 7, 1);
-  // Halka
-  spk(98, 0, 6);
-  orb(100, 2);
-  // Gemi
-  portal(112, 'ship', 9);
-  spk(116, 0, 50);
-  blk(122, 0, 1, 4); blk(130, 5, 1, 4); blk(138, 0, 1, 5);
-  blk(146, 4, 1, 5); blk(154, 0, 1, 4); blk(160, 5, 1, 4);
-  portal(168, 'cube');
-  // Final
-  spk(176);
-  spk(182, 0, 3);
-  blk(189, 0, 4, 1); spk(193, 0, 2); blk(195, 0, 4, 1);
-  pad(203);
-  spk(204, 0, 6);
-  blk(206, 2, 4, 1);
-  L.end = 220;
-
-  for (const k of ['blocks', 'spikes', 'pads', 'orbs', 'portals']) L[k].sort((a, b) => a.x - b.x);
-  return L;
-}
-
-function newPlayer() {
-  return { x: 0, y: 0, vy: 0, mode: 'cube', grounded: true, dead: false, won: false, ceil: Infinity,
-    usedPads: new Set(), usedOrbs: new Set(), portalIdx: 0, orbBuf: 0, holdPrev: false };
-}
-
-function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
-  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
-}
-
-function step(p, L, dt, hold, ev) {
-  if (p.dead || p.won) return;
-  if (hold && !p.holdPrev) p.orbBuf = 0.1;
-  p.holdPrev = hold;
-  const prevY = p.y;
-
-  while (p.portalIdx < L.portals.length && p.x + 0.5 >= L.portals[p.portalIdx].x + 0.5) {
-    const q = L.portals[p.portalIdx++];
-    p.mode = q.mode; p.ceil = q.ceil;
-    if (q.mode === 'ship') p.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, p.vy * 0.5));
-    ev && ev.push({ type: 'portal', mode: q.mode });
-  }
-
-  if (p.mode === 'cube') {
-    if (p.grounded && hold) { p.vy = JUMP; p.grounded = false; ev && ev.push({ type: 'jump' }); }
-    p.vy = Math.max(p.vy - G * dt, -MAXFALL);
-  } else {
-    p.vy = Math.max(-SHIP_MAX, Math.min(SHIP_MAX, p.vy + (hold ? SHIP_ACC : -SHIP_ACC) * dt));
-  }
-  p.x += SPEED * dt;
-  p.y += p.vy * dt;
-  p.grounded = false;
-
-  if (p.y <= 0) { p.y = 0; if (p.vy < 0) p.vy = 0; p.grounded = true; }
-  if (p.y + 1 >= p.ceil) { p.y = p.ceil - 1; if (p.vy > 0) p.vy = 0; }
-
-  for (const b of L.blocks) {
-    if (b.x > p.x + 1) break;
-    if (b.x + b.w < p.x) continue;
-    if (!overlap(p.x + 0.02, p.y, 0.96, 1, b.x, b.y, b.w, b.h)) continue;
-    const top = b.y + b.h;
-    if (p.vy <= 0 && prevY >= top - 0.2) { p.y = top; p.vy = 0; p.grounded = true; }
-    else if (p.mode === 'ship' && p.vy >= 0 && prevY + 1 <= b.y + 0.2) { p.y = b.y - 1; p.vy = 0; }
-    else { p.dead = true; return; }
-  }
-
-  for (const s of L.spikes) {
-    if (s.x > p.x + 1) break;
-    if (s.x + 1 < p.x) continue;
-    const sy = s.flip ? s.y + 0.45 : s.y;
-    if (overlap(p.x + 0.12, p.y + 0.08, 0.76, 0.8, s.x + 0.3, sy, 0.4, 0.55)) { p.dead = true; return; }
-  }
-
-  for (const d of L.pads) {
-    if (d.x > p.x + 1) break;
-    if (p.usedPads.has(d.id)) continue;
-    if (overlap(p.x, p.y, 1, 1, d.x + 0.1, d.y, 0.8, 0.3)) {
-      p.usedPads.add(d.id);
-      p.vy = p.mode === 'cube' ? PAD : SHIP_MAX; p.grounded = false;
-      ev && ev.push({ type: 'pad', x: d.x, y: d.y });
-    }
-  }
-
-  if (p.orbBuf > 0 && p.mode === 'cube') {
-    for (const o of L.orbs) {
-      if (o.x > p.x + 2) break;
-      if (p.usedOrbs.has(o.id)) continue;
-      const dx = p.x - o.x, dy = p.y - o.y;
-      if (dx * dx + dy * dy < 0.95 * 0.95) {
-        p.usedOrbs.add(o.id); p.orbBuf = 0;
-        p.vy = ORB; p.grounded = false;
-        ev && ev.push({ type: 'orb', x: o.x, y: o.y });
-        break;
-      }
-    }
-  }
-  p.orbBuf -= dt;
-
-  if (p.x >= L.end) p.won = true;
-}
-// PHYSICS END
-
-(() => {
-  const cv = document.getElementById('cv');
-  const ctx = cv.getContext('2d');
-  const $ = id => document.getElementById(id);
-  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const L = buildLevel();
-  const BEST_KEY = 'kare-kosusu-best';
-
-  let best = 0;
-  try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) {}
-
-  let W = 0, H = 0, dpr = 1, PX = 40, GY = 0;
-  function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = innerWidth; H = innerHeight;
-    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-    PX = Math.min(H / 12.5, W / 14);
-    GY = Math.min(H - 1.6 * PX, H / 2 + 6.2 * PX);
-  }
-  addEventListener('resize', resize); resize();
-
-  // --- Game state ---
-  let state = 'menu'; // menu | play | dead | paused | won
-  let p = newPlayer();
-  let attempt = 1, deadT = 0, jumps = 0, runTime = 0;
-  let rot = 0, shake = 0, camX = -6;
-  let particles = [], rings = [];
-  let acc = 0, last = performance.now(), clock = 0;
-
-  // --- Input ---
-  const keys = new Set();
-  let pointerDown = false;
-  const holding = () => keys.size > 0 || pointerDown;
-  const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW']);
-  addEventListener('keydown', e => {
-    if (JUMP_KEYS.has(e.code)) {
-      if (state === 'play' || state === 'dead') e.preventDefault();
-      if (state === 'play' || state === 'dead') keys.add(e.code);
-      else if (state === 'menu' && !e.repeat) { e.preventDefault(); startGame(); }
-    }
-    if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) togglePause();
-  });
-  addEventListener('keyup', e => keys.delete(e.code));
-  cv.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    if (state === 'play' || state === 'dead') pointerDown = true;
-  });
-  addEventListener('pointerup', () => { pointerDown = false; });
-  addEventListener('pointercancel', () => { pointerDown = false; });
-  addEventListener('blur', () => { keys.clear(); pointerDown = false; });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') togglePause(); });
-
-  // --- Audio ---
-  let actx = null, master = null, muted = false, nextNote = 0, noteIdx = 0, noise = null;
-  const BPM = 150, S16 = 60 / BPM / 4;
-  const ROOTS = [45, 41, 48, 43];
-  const CHORDS = [[69, 72, 76], [65, 69, 72], [72, 76, 79], [67, 71, 74]];
-  const ARP = [0, 1, 2, 1, 0, 2, 1, 2, 0, 1, 2, 1, 2, 1, 0, 1];
-  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
-  try { muted = localStorage.getItem('kare-kosusu-mute') === '1'; } catch (e) {}
-
-  function initAudio() {
-    if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    actx = new AC();
-    master = actx.createGain(); master.gain.value = muted ? 0 : 0.5;
-    master.connect(actx.destination);
-    noise = actx.createBuffer(1, actx.sampleRate * 0.5, actx.sampleRate);
-    const d = noise.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    setInterval(schedule, 25);
-  }
-  function tone(freq, t, dur, type, gain, dest = master) {
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type; o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.02);
-    return o;
-  }
-  function hiss(t, dur, gain, hp) {
-    const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
-    s.buffer = noise; f.type = 'highpass'; f.frequency.value = hp;
-    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur + 0.02);
-  }
-  function kick(t) {
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
-    g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.22);
-  }
-  function playNote(i, t) {
-    const s = i % 16, bar = Math.floor(i / 16) % 4;
-    if (s % 4 === 0) kick(t);
-    if (s === 4 || s === 12) hiss(t, 0.14, 0.35, 1500);
-    if (s % 4 === 2) hiss(t, 0.04, 0.18, 7000);
-    if (s % 2 === 0) tone(mtof(ROOTS[bar] + (s % 4 === 2 ? 12 : 0)), t, S16 * 1.8, 'sawtooth', 0.12);
-    if (i >= 32) tone(mtof(CHORDS[bar][ARP[s]] + 12), t, S16 * 0.9, 'square', 0.045);
-  }
-  function schedule() {
-    if (!actx || state !== 'play' && state !== 'dead') return;
-    while (nextNote < actx.currentTime + 0.12) { playNote(noteIdx++, nextNote); nextNote += S16; }
-  }
-  function restartMusic() { if (!actx) return; noteIdx = 0; nextNote = actx.currentTime + 0.06; }
-  function sfx(kind) {
-    if (!actx) return;
-    const t = actx.currentTime;
-    if (kind === 'death') {
-      hiss(t, 0.5, 0.7, 200);
-      const o = tone(220, t, 0.45, 'sawtooth', 0.3);
-      o.frequency.exponentialRampToValueAtTime(40, t + 0.45);
-    } else if (kind === 'orb' || kind === 'pad') {
-      const o = tone(500, t, 0.18, 'triangle', 0.25);
-      o.frequency.exponentialRampToValueAtTime(1200, t + 0.15);
-    } else if (kind === 'portal') {
-      const o = tone(300, t, 0.35, 'sine', 0.3);
-      o.frequency.exponentialRampToValueAtTime(900, t + 0.3);
-    } else if (kind === 'win') {
-      [69, 73, 76, 81, 85, 88].forEach((m, i) => tone(mtof(m), t + i * 0.09, 0.4, 'square', 0.12));
-    }
-  }
-  function setMuted(m) {
-    muted = m;
-    $('muteBtn').textContent = m ? '✕' : '♪';
-    $('muteBtn').setAttribute('aria-label', m ? 'Sesi aç' : 'Sesi kapat');
-    if (master) master.gain.value = m ? 0 : 0.5;
-    try { localStorage.setItem('kare-kosusu-mute', m ? '1' : '0'); } catch (e) {}
-  }
-  setMuted(muted);
-
-  // --- Flow ---
-  function show(id, on) { $(id).hidden = !on; }
-  function resetRun() {
-    p = newPlayer(); rot = 0; particles = []; rings = []; runTime = 0;
-    acc = 0; camX = -6;
-  }
-  function startGame() {
-    initAudio();
-    show('menu', false); show('winScr', false); show('pauseScr', false);
-    attempt = 1; jumps = 0; resetRun();
-    state = 'play'; restartMusic();
-    cv.focus?.();
-  }
-  function togglePause() {
-    if (state === 'play') {
-      state = 'paused'; keys.clear(); pointerDown = false;
-      $('pausePct').textContent = pctNow() + '%';
-      $('pauseAtt').textContent = attempt;
-      show('pauseScr', true); $('resumeBtn').focus();
-      actx && actx.suspend();
-    } else if (state === 'paused') {
-      show('pauseScr', false); state = 'play'; last = performance.now();
-      if (actx) actx.resume().then(() => { nextNote = Math.max(nextNote, actx.currentTime + 0.05); });
-    }
-  }
-  function pctNow() { return Math.max(0, Math.min(100, Math.floor(p.x / L.end * 100))); }
-  function saveBest(v) {
-    if (v <= best) return;
-    best = v;
-    try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
-  }
-
-  $('playBtn').addEventListener('click', startGame);
-  $('againBtn').addEventListener('click', startGame);
-  $('resumeBtn').addEventListener('click', togglePause);
-  $('restartBtn').addEventListener('click', () => { show('pauseScr', false); if (actx) actx.resume(); startGame(); });
-  $('pauseBtn').addEventListener('click', e => { e.currentTarget.blur(); togglePause(); });
-  $('muteBtn').addEventListener('click', e => { e.currentTarget.blur(); setMuted(!muted); });
-
-  // --- Effects ---
-  function burst(x, y, color, n, speed, life) {
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = speed * (0.3 + Math.random() * 0.9);
-      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, size: 0.12 + Math.random() * 0.22, color });
-    }
-  }
-  function handleEvents(ev) {
-    for (const e of ev) {
-      if (e.type === 'jump') jumps++;
-      if (e.type === 'orb' || e.type === 'pad') {
-        rings.push({ x: e.x + 0.5, y: e.y + (e.type === 'pad' ? 0.15 : 0.5), r: 0.3, life: 0.35 });
-        sfx(e.type);
-      }
-      if (e.type === 'portal') { sfx('portal'); burst(p.x + 0.5, p.y + 0.5, e.mode === 'ship' ? '#ff3d9a' : '#5dff9d', 18, 6, 0.5); }
-    }
-  }
-
-  function update(dt) {
-    clock += dt;
-    if (state === 'play') {
-      acc += dt;
-      runTime += dt;
-      while (acc >= DT) {
-        acc -= DT;
-        const ev = [];
-        step(p, L, DT, holding(), ev);
-        if (ev.length) handleEvents(ev);
-        if (p.mode === 'ship' && Math.random() < 0.5) {
-          particles.push({ x: p.x + 0.1, y: p.y + 0.35, vx: -2 - Math.random() * 2, vy: (Math.random() - 0.5) * 1.5, life: 0.35, max: 0.35, size: 0.18, color: '#ff9ad1' });
-        }
-        if (p.dead) { die(); break; }
-        if (p.won) { win(); break; }
-      }
-      // Rotation
-      if (p.mode === 'cube') {
-        if (p.grounded) {
-          const target = Math.round(rot / (Math.PI / 2)) * (Math.PI / 2);
-          rot += (target - rot) * Math.min(1, dt * 22);
-        } else rot += dt * 7.3;
-      } else {
-        rot = -Math.atan2(p.vy, SPEED) * 1.1;
-      }
-    } else if (state === 'dead') {
-      deadT -= dt;
-      if (deadT <= 0) {
-        attempt++; resetRun(); state = 'play'; restartMusic();
-      }
-    }
-    // Camera
-    const lead = (W * 0.3) / PX;
-    const target = Math.min(p.x, L.end) - lead;
-    camX = state === 'play' && p.x < 1 ? target : camX + (target - camX) * Math.min(1, dt * 20);
-    // Particles
-    for (const q of particles) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy -= 9 * dt; q.life -= dt; }
-    particles = particles.filter(q => q.life > 0);
-    for (const r of rings) { r.r += dt * 6; r.life -= dt; }
-    rings = rings.filter(r => r.life > 0);
-    shake = Math.max(0, shake - dt * 2.5);
-    // HUD
-    const pc = state === 'won' ? 100 : pctNow();
-    $('barFill').style.width = pc + '%';
-    $('pct').textContent = pc + '%';
-  }
-
-  function die() {
-    state = 'dead'; deadT = 1.0;
-    if (!reduceMotion) shake = 0.6;
-    burst(p.x + 0.5, p.y + 0.5, '#ffd23f', 26, 9, 0.8);
-    burst(p.x + 0.5, p.y + 0.5, '#56f0ff', 14, 6, 0.7);
-    rings.push({ x: p.x + 0.5, y: p.y + 0.5, r: 0.4, life: 0.5 });
-    sfx('death');
-    saveBest(pctNow());
-  }
-  function win() {
-    state = 'won'; saveBest(100); sfx('win');
-    for (let i = 0; i < 6; i++) burst(p.x + 0.5, p.y + 1 + i * 0.6, ['#ffd23f', '#56f0ff', '#ff3d9a', '#5dff9d'][i % 4], 16, 10, 1.4);
-    $('winAtt').textContent = attempt;
-    $('winJumps').textContent = jumps;
-    $('winTime').textContent = runTime.toFixed(1) + 's';
-    setTimeout(() => { if (state === 'won') { show('winScr', true); $('againBtn').focus(); } }, 900);
-  }
-
-  // --- Drawing ---
-  const sx = wx => (wx - camX) * PX;
-  const sy = wy => GY - wy * PX;
-  function hash(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
-
-  function hueAt(x) { return 228 + 110 * Math.max(0, Math.min(1, x / L.end)); }
-
-  function drawBackground(hue) {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, `hsl(${hue},72%,24%)`);
-    g.addColorStop(1, `hsl(${hue + 18},78%,9%)`);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    // Parallax squares
-    const size = PX * 2.6, par = reduceMotion ? 0 : 0.18;
-    const off = camX * PX * par;
-    const c0 = Math.floor(off / size) - 1, cols = Math.ceil(W / size) + 2, rows = Math.ceil(GY / size) + 1;
-    ctx.lineWidth = 2;
-    for (let i = c0; i < c0 + cols; i++) for (let j = 0; j < rows; j++) {
-      const r = hash(i, j);
-      if (r > 0.28) continue;
-      const x = i * size - off, y = GY - (j + 1) * size;
-      ctx.strokeStyle = `hsla(${hue + 30},90%,70%,${0.05 + r * 0.25})`;
-      ctx.fillStyle = `hsla(${hue + 30},90%,60%,${r * 0.12})`;
-      ctx.fillRect(x + 6, y + 6, size - 12, size - 12);
-      ctx.strokeRect(x + 6, y + 6, size - 12, size - 12);
-    }
-  }
-
-  function glowLine(x1, y1, x2, y2, color) {
-    ctx.save();
-    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowColor = color; ctx.shadowBlur = 14;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawGround(hue) {
-    ctx.fillStyle = `hsl(${hue},65%,11%)`;
-    ctx.fillRect(0, GY, W, H - GY);
-    ctx.strokeStyle = `hsla(${hue},80%,60%,.25)`; ctx.lineWidth = 2;
-    const tile = 4;
-    for (let t = Math.floor(camX / tile) * tile; sx(t) < W; t += tile) {
-      ctx.strokeRect(sx(t) + 4, GY + 6, tile * PX - 8, PX * 1.6);
-    }
-    glowLine(0, GY, W, GY, `hsl(${hue - 10},100%,82%)`);
-    // Ship ceilings
-    for (let i = 0; i < L.portals.length; i++) {
-      const q = L.portals[i];
-      if (q.mode !== 'ship') continue;
-      const xEnd = (L.portals[i + 1] || { x: L.end }).x;
-      const a = Math.max(0, sx(q.x + 0.5)), b = Math.min(W, sx(xEnd + 0.5));
-      if (b <= 0 || a >= W) continue;
-      const cy = sy(q.ceil);
-      ctx.fillStyle = `hsl(${hue},65%,11%)`;
-      ctx.fillRect(a, 0, b - a, cy);
-      glowLine(a, cy, b, cy, `hsl(${hue - 10},100%,82%)`);
-    }
-  }
-
-  function drawBlock(b, hue) {
-    const x = sx(b.x), y = sy(b.y + b.h), w = b.w * PX, h = b.h * PX;
-    if (x > W || x + w < 0) return;
-    ctx.fillStyle = 'rgba(4,6,20,.92)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = `hsla(${hue + 20},90%,70%,.25)`; ctx.lineWidth = 1;
-    for (let i = 0; i < b.w; i++) for (let j = 0; j < b.h; j++) ctx.strokeRect(x + i * PX + 5, y + j * PX + 5, PX - 10, PX - 10);
-    ctx.save();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.shadowColor = `hsl(${hue},100%,75%)`; ctx.shadowBlur = 10;
-    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-    ctx.restore();
-  }
-
-  function drawSpike(s) {
-    const x = sx(s.x), base = s.flip ? sy(s.y + 1) : sy(s.y), tip = s.flip ? sy(s.y) : sy(s.y + 1);
-    if (x > W || x + PX < 0) return;
-    ctx.beginPath();
-    ctx.moveTo(x + 2, base); ctx.lineTo(x + PX / 2, tip + (s.flip ? -3 : 3)); ctx.lineTo(x + PX - 2, base); ctx.closePath();
-    ctx.fillStyle = 'rgba(4,6,20,.95)'; ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.2; ctx.stroke();
-  }
-
-  function drawPad(d) {
-    const x = sx(d.x + 0.5), y = sy(d.y);
-    const used = p.usedPads.has(d.id);
-    ctx.save();
-    ctx.fillStyle = used ? '#a88a2a' : '#ffd23f';
-    ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = used ? 0 : 16;
-    ctx.beginPath(); ctx.ellipse(x, y, PX * 0.42, PX * 0.22, 0, Math.PI, 0); ctx.fill();
-    ctx.restore();
-    if (!used) {
-      const t = (clock * 1.6) % 1;
-      ctx.fillStyle = `rgba(255,210,63,${0.5 * (1 - t)})`;
-      ctx.fillRect(x - PX * 0.3, y - PX * (0.3 + t * 1.2), PX * 0.6, 3);
-    }
-  }
-
-  function drawOrb(o) {
-    const x = sx(o.x + 0.5), y = sy(o.y + 0.5);
-    const used = p.usedOrbs.has(o.id);
-    const pulse = 1 + Math.sin(clock * 6) * 0.06;
-    ctx.save();
-    ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = used ? 0 : 20;
-    ctx.strokeStyle = used ? '#8f7a35' : '#ffd23f'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(x, y, PX * 0.42 * pulse, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = used ? 'rgba(143,122,53,.4)' : 'rgba(255,230,120,.85)';
-    ctx.beginPath(); ctx.arc(x, y, PX * 0.26, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
-
-  function drawPortal(q) {
-    const x = sx(q.x + 0.5);
-    if (x < -PX * 2 || x > W + PX * 2) return;
-    const color = q.mode === 'ship' ? '#ff3d9a' : '#5dff9d';
-    const cy = sy(q.mode === 'ship' ? 4.5 : 2.5), ry = PX * (q.mode === 'ship' ? 2.6 : 1.6);
-    ctx.save();
-    ctx.shadowColor = color; ctx.shadowBlur = 24;
-    ctx.strokeStyle = color; ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.ellipse(x, cy, PX * 0.45, ry, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.lineWidth = 2; ctx.strokeStyle = '#fff';
-    ctx.beginPath(); ctx.ellipse(x, cy, PX * 0.3, ry * 0.85, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.restore();
-    ctx.fillStyle = color; ctx.font = `${Math.round(PX * 0.34)}px Bungee, Impact, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(q.mode === 'ship' ? 'GEMİ' : 'KARE', x, cy - ry - PX * 0.25);
-  }
-
-  function drawEnd(hue) {
-    const x = sx(L.end);
-    if (x > W + 20) return;
-    const g = ctx.createLinearGradient(x, 0, x + PX * 4, 0);
-    g.addColorStop(0, 'rgba(255,255,255,.85)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g; ctx.fillRect(x, 0, PX * 4, GY);
-    ctx.save(); ctx.translate(x - PX * 0.6, GY - PX * 4); ctx.rotate(-Math.PI / 2);
-    ctx.fillStyle = '#fff'; ctx.font = `${Math.round(PX * 0.6)}px Bungee, Impact, sans-serif`; ctx.textAlign = 'center';
-    ctx.fillText('BİTİŞ', 0, 0); ctx.restore();
-  }
-
-  function drawCube(size) {
-    const s = size;
-    ctx.fillStyle = '#ffd23f'; ctx.fillRect(-s / 2, -s / 2, s, s);
-    ctx.lineWidth = Math.max(2, s * 0.07); ctx.strokeStyle = '#1a1300'; ctx.strokeRect(-s / 2, -s / 2, s, s);
-    ctx.fillStyle = '#56f0ff'; ctx.fillRect(-s * 0.3, -s * 0.3, s * 0.6, s * 0.6);
-    ctx.strokeRect(-s * 0.3, -s * 0.3, s * 0.6, s * 0.6);
-    ctx.fillStyle = '#1a1300';
-    ctx.fillRect(-s * 0.2, -s * 0.16, s * 0.12, s * 0.14);
-    ctx.fillRect(s * 0.08, -s * 0.16, s * 0.12, s * 0.14);
-    ctx.fillRect(-s * 0.16, s * 0.08, s * 0.32, s * 0.07);
-  }
-
-  function drawPlayer() {
-    if (state === 'dead' || state === 'won' && particles.length) return;
-    const cx = sx(p.x + 0.5), cy = sy(p.y + 0.5);
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot);
-    ctx.shadowColor = 'rgba(255,210,63,.6)'; ctx.shadowBlur = 12;
-    if (p.mode === 'cube') drawCube(PX);
-    else {
-      ctx.save(); ctx.translate(-PX * 0.05, -PX * 0.22); drawCube(PX * 0.48); ctx.restore();
-      ctx.beginPath();
-      ctx.moveTo(-PX * 0.55, -PX * 0.02); ctx.lineTo(PX * 0.25, -PX * 0.02); ctx.lineTo(PX * 0.6, PX * 0.18);
-      ctx.lineTo(PX * 0.3, PX * 0.38); ctx.lineTo(-PX * 0.5, PX * 0.38); ctx.lineTo(-PX * 0.62, PX * 0.12); ctx.closePath();
-      ctx.fillStyle = '#ff3d9a'; ctx.fill();
-      ctx.lineWidth = 2.5; ctx.strokeStyle = '#1a1300'; ctx.stroke();
-      ctx.fillStyle = '#56f0ff'; ctx.fillRect(-PX * 0.35, PX * 0.1, PX * 0.5, PX * 0.12);
-    }
-    ctx.restore();
-  }
-
-  function draw() {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const hue = hueAt(p.x);
-    drawBackground(hue);
-    ctx.save();
-    if (shake > 0) ctx.translate((Math.random() - 0.5) * shake * 16, (Math.random() - 0.5) * shake * 16);
-
-    // Attempt label, placed in the world like a sign at the start
-    ctx.fillStyle = 'rgba(255,255,255,.9)';
-    ctx.font = `${Math.round(PX * 0.75)}px Bungee, Impact, sans-serif`; ctx.textAlign = 'left';
-    ctx.fillText(`Deneme ${attempt}`, sx(3), sy(4.6));
-
-    drawGround(hue);
-    for (const q of L.portals) drawPortal(q);
-    for (const b of L.blocks) drawBlock(b, hue);
-    for (const s of L.spikes) drawSpike(s);
-    for (const d of L.pads) drawPad(d);
-    for (const o of L.orbs) drawOrb(o);
-    drawEnd(hue);
-
-    for (const r of rings) {
-      ctx.strokeStyle = `rgba(255,255,255,${r.life * 2})`; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx(r.x), sy(r.y), r.r * PX, 0, Math.PI * 2); ctx.stroke();
-    }
-    drawPlayer();
-    for (const q of particles) {
-      ctx.globalAlpha = Math.max(0, q.life / q.max);
-      ctx.fillStyle = q.color;
-      const s = q.size * PX;
-      ctx.fillRect(sx(q.x) - s / 2, sy(q.y) - s / 2, s, s);
-    }
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
-  function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-    if (state !== 'paused' && state !== 'menu') update(dt);
-    else if (state === 'menu') { clock += dt; camX += dt * 3; }
-    draw();
-    requestAnimationFrame(frame);
-  }
-
-  $('bestMenu').textContent = best + '%';
-  requestAnimationFrame(frame);
-})();
-</script>
+<script src="js/physics.js"></script>
+<script src="js/levels/level01.js"></script>
+<script src="js/levels/level02.js"></script>
+<script src="js/levels/level03.js"></script>
+<script src="js/levels/level04.js"></script>
+<script src="js/levels/level05.js"></script>
+<script src="js/levels/level06.js"></script>
+<script src="js/levels/level07.js"></script>
+<script src="js/levels/level08.js"></script>
+<script src="js/levels/level09.js"></script>
+<script src="js/levels/level10.js"></script>
+<script src="js/levels/level11.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
