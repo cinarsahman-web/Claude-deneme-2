@@ -31,22 +31,28 @@
       try {
         const old = Number(localStorage.getItem('kare-kosusu-best'));
         if (old > 0) s.levels[1] = { best: Math.min(100, old), practice: 0, coins: [false, false, false], done: old >= 100, attempts: 0, jumps: 0 };
-        if (localStorage.getItem('kare-kosusu-mute') === '1') s.settings.music = 0;
+        if (localStorage.getItem('kare-kosusu-mute') === '1') { s.settings.music = 0; s.settings.sfx = 0; }
       } catch (e) { /* storage unavailable */ }
     }
-    s.stats = Object.assign(d.stats, s.stats);
-    s.settings = Object.assign(d.settings, s.settings);
-    s.char = Object.assign(d.char, s.char);
+    // Keep only known keys whose type matches the default, so a damaged save cannot break the game.
+    const merge = (def, got) => {
+      if (got && typeof got === 'object') for (const k of Object.keys(def)) if (typeof got[k] === typeof def[k]) def[k] = got[k];
+      return def;
+    };
+    s.stats = merge(d.stats, s.stats);
+    s.settings = merge(d.settings, s.settings);
+    s.char = merge(d.char, s.char);
     if (!s.levels || typeof s.levels !== 'object') s.levels = {};
     return s;
   }
   let save = loadSave();
   function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
   function lvSave(id) {
-    const l = save.levels[id] || (save.levels[id] = {});
+    let l = save.levels[id];
+    if (!l || typeof l !== 'object' || Array.isArray(l)) l = save.levels[id] = {};
     if (typeof l.best !== 'number') l.best = 0;
     if (typeof l.practice !== 'number') l.practice = 0;
-    if (!Array.isArray(l.coins)) l.coins = [false, false, false];
+    if (!Array.isArray(l.coins) || l.coins.length !== 3) l.coins = [false, false, false];
     if (typeof l.attempts !== 'number') l.attempts = 0;
     if (typeof l.jumps !== 'number') l.jumps = 0;
     l.done = !!l.done;
@@ -66,8 +72,11 @@
     { name: 'Yok', req: null }, { name: 'Kıvılcım', req: null }, { name: 'Şerit', req: { stars: 5 } },
     { name: 'Gökkuşağı', req: { coins: 12 } }, { name: 'Yıldız tozu', req: { stars: 30 } },
   ];
-  const reqMet = req => !req || (req.stars ? totalStars() >= req.stars : totalCoins() >= req.coins);
-  const reqText = req => req.stars ? `${req.stars}★` : `${req.coins} para`;
+  // Thresholds are capped at what the installed levels can award, so every item stays reachable.
+  const reqStars = req => Math.min(req.stars, maxStars());
+  const reqCoins = req => Math.min(req.coins, maxCoins());
+  const reqMet = req => !req || (req.stars ? totalStars() >= reqStars(req) : totalCoins() >= reqCoins(req));
+  const reqText = req => req.stars ? `${reqStars(req)}★` : `${reqCoins(req)} para`;
   function unlockedSet() {
     const s = new Set();
     ICON_REQ.forEach((r, i) => reqMet(r) && s.add('icon' + i));
@@ -125,7 +134,7 @@
     if (id === 'scrGarage') renderGarage();
     if (id === 'scrSettings') renderSettings();
     if (id === 'scrStats') renderStats();
-    const first = $(id).querySelector('button');
+    const first = id === 'scrLevels' ? $('lvPlay') : $(id).querySelector('button');
     if (first) first.focus({ preventScroll: true });
   }
   function click() { A.sfx('click'); }
@@ -356,17 +365,19 @@
 
   // ---------- Input ----------
   const keys = new Set();
-  let pointerDown = false;
-  const holding = () => keys.size > 0 || pointerDown;
+  const pointers = new Set();
+  const holding = () => keys.size > 0 || pointers.size > 0;
+  const releaseAll = () => { keys.clear(); pointers.clear(); };
   const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW']);
   window.addEventListener('keydown', e => {
+    if (e.repeat && (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter')) e.preventDefault();
     if (game && (gstate === 'play' || gstate === 'dead')) {
       if (JUMP_KEYS.has(e.code)) { e.preventDefault(); keys.add(e.code); return; }
       if (e.code === 'KeyZ' && game.practice && !e.repeat) { addCheckpoint(true); return; }
       if (e.code === 'KeyX' && game.practice && !e.repeat) { removeCheckpoint(); return; }
     }
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) {
-      if (game && gstate === 'play') { e.preventDefault(); pauseGame(); return; }
+      if (game && (gstate === 'play' || gstate === 'dead')) { e.preventDefault(); pauseGame(); return; }
       if (game && gstate === 'paused') { e.preventDefault(); resumeGame(); return; }
       if (!game && e.code === 'Escape' && screen !== 'scrMain') { e.preventDefault(); showScreen('scrMain'); return; }
     }
@@ -379,12 +390,17 @@
   });
   window.addEventListener('keyup', e => keys.delete(e.code));
   cv.addEventListener('pointerdown', e => {
-    if (game && (gstate === 'play' || gstate === 'dead')) { e.preventDefault(); pointerDown = true; }
+    if (game && (gstate === 'play' || gstate === 'dead')) { e.preventDefault(); pointers.add(e.pointerId); }
   });
-  window.addEventListener('pointerup', () => { pointerDown = false; });
-  window.addEventListener('pointercancel', () => { pointerDown = false; });
-  window.addEventListener('blur', () => { keys.clear(); pointerDown = false; });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && game && gstate === 'play') pauseGame(); });
+  window.addEventListener('pointerup', e => pointers.delete(e.pointerId));
+  window.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+  window.addEventListener('blur', releaseAll);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    if (game && (gstate === 'play' || gstate === 'dead')) pauseGame();
+    persist();
+  });
+  window.addEventListener('pagehide', persist);
 
   // ---------- Game ----------
   let game = null, gstate = 'idle', acc = 0, auto = null;
@@ -419,13 +435,13 @@
   function respawn(fresh) {
     const g = game, L = g.L, ls = lvSave(g.def.id);
     const cp = g.practice && !fresh && g.checkpoints.length ? g.checkpoints[g.checkpoints.length - 1] : null;
-    if (cp) { g.p = KK.clonePlayer(cp.p); g.rot = cp.rot; }
+    if (cp) { g.p = KK.clonePlayer(cp.p); g.rot = cp.rot; g.lastCpX = cp.p.x; }
     else {
       g.p = KK.newPlayer(L); g.rot = 0; g.runTime = 0;
       if (fresh || !g.practice) { g.checkpoints = []; g.lastCpX = -99; }
       if (!g.practice) A.playTrack(g.def.music);
     }
-    g.p.holdPrev = holding();
+    g.p.holdPrev = holding(); g.p.jumpBuf = 0;
     g.attempt++;
     if (g.practice) save.stats.practiceAttempts++;
     else { save.stats.attempts++; ls.attempts++; }
@@ -474,12 +490,14 @@
       }
     }
   }
+  // A checkpoint is safe when a player who respawns there with the button released survives
+  // either by doing nothing, or by starting to hold only after a quarter-second reaction time.
   function survives(p0, L) {
     for (const hold of [false, true]) {
       const q = KK.clonePlayer(p0);
-      q.holdPrev = hold;
+      q.holdPrev = false; q.jumpBuf = 0;
       let ok = true;
-      for (let i = 0; i < 120; i++) { KK.step(q, L, DT, hold); if (q.dead) { ok = false; break; } if (q.won) break; }
+      for (let i = 0; i < 200; i++) { KK.step(q, L, DT, hold && i >= 60); if (q.dead) { ok = false; break; } if (q.won) break; }
       if (ok) return true;
     }
     return false;
@@ -495,6 +513,8 @@
   function removeCheckpoint() {
     if (!game || !game.practice || !game.checkpoints.length) return;
     game.checkpoints.pop(); A.sfx('click');
+    const lastCp = game.checkpoints[game.checkpoints.length - 1];
+    game.lastCpX = lastCp ? lastCp.p.x : -99;
   }
   $('cpAdd').addEventListener('pointerdown', e => e.stopPropagation());
   $('cpDel').addEventListener('pointerdown', e => e.stopPropagation());
@@ -567,9 +587,12 @@
   $('cAgain').addEventListener('click', () => { click(); startLevel(game.idx, game.practice); });
   $('cLevels').addEventListener('click', () => { click(); exitToLevels(); });
 
+  let pausedFrom = 'play';
   function pauseGame() {
-    if (!game || gstate !== 'play') return;
-    gstate = 'paused'; keys.clear(); pointerDown = false;
+    if (!game || (gstate !== 'play' && gstate !== 'dead')) return;
+    pausedFrom = gstate;
+    gstate = 'paused'; releaseAll();
+    persist();
     const ls = lvSave(game.def.id);
     $('pLevel').textContent = game.def.name;
     $('pBarN').style.width = ls.best + '%'; $('pPctN').textContent = ls.best + '%';
@@ -582,7 +605,7 @@
   }
   function resumeGame() {
     if (!game || gstate !== 'paused') return;
-    $('scrPause').hidden = true; gstate = 'play'; last = performance.now();
+    $('scrPause').hidden = true; gstate = pausedFrom; last = performance.now();
     A.resume();
     cv.focus({ preventScroll: true });
   }
@@ -590,11 +613,11 @@
   $('pauseBtn').addEventListener('click', e => { e.currentTarget.blur(); pauseGame(); });
   $('pResume').addEventListener('click', resumeGame);
   $('pRestart').addEventListener('click', () => {
-    click(); $('scrPause').hidden = true; A.resume();
+    A.resume(); click(); $('scrPause').hidden = true;
     game.checkpoints = []; respawn(true); A.playTrack(game.def.music);
   });
   $('pPractice').addEventListener('click', () => {
-    click(); $('scrPause').hidden = true; A.resume();
+    A.resume(); click(); $('scrPause').hidden = true;
     game.practice = !game.practice;
     setPracticeUI();
     if (game.practice) {
@@ -606,8 +629,9 @@
       respawn(true); A.playTrack(game.def.music);
     }
   });
-  $('pExit').addEventListener('click', () => { click(); A.resume(); exitToLevels(); });
+  $('pExit').addEventListener('click', () => { A.resume(); click(); exitToLevels(); });
   function exitToLevels() {
+    persist();
     game = null; gstate = 'idle';
     particles = []; rings = [];
     A.playMenu();

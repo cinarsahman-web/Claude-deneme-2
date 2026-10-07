@@ -30,7 +30,7 @@
   const A = {
     ctx: null, master: null, musicBus: null, sfxBus: null, noise: null,
     musicVol: 0.7, sfxVol: 0.8,
-    track: null, pattern: null, nextTime: 0, stepIdx: 0, playing: false, timer: null,
+    track: null, pattern: null, nextTime: 0, stepIdx: 0, playing: false, timer: null, trackBus: null,
   };
 
   A.init = function () {
@@ -104,7 +104,7 @@
 
   function playStep(i, time) {
     const P = A.pattern, s = i % 16, bar = Math.floor(i / 16) % 4, section = Math.floor(i / 64);
-    const bus = A.musicBus, intro = i < 32;
+    const bus = A.trackBus || A.musicBus, intro = i < 32;
     if (P.drums.k[s] === 'x') kick(time, bus);
     if (!intro && P.drums.s[s] === 'x') hiss(time, 0.13, 0.32, 1400, bus);
     if (P.drums.h[s] === 'x') hiss(time, 0.035, intro ? 0.08 : 0.15, 7500, bus);
@@ -129,8 +129,20 @@
     }
   }
 
+  // Each track plays through its own gain node; switching fades the old one out so notes the
+  // scheduler already queued (up to 0.12 s ahead) do not smear over the new downbeat.
+  function retireTrackBus() {
+    const old = A.trackBus;
+    if (!old) return;
+    old.gain.setTargetAtTime(0, A.ctx.currentTime, 0.01);
+    setTimeout(() => old.disconnect(), 400);
+    A.trackBus = null;
+  }
   A.playTrack = function (track) {
     if (!A.ctx) return;
+    retireTrackBus();
+    A.trackBus = A.ctx.createGain();
+    A.trackBus.connect(A.musicBus);
     A.track = track || MENU_TRACK;
     A.pattern = compile(A.track);
     A.stepIdx = 0;
@@ -138,7 +150,7 @@
     A.playing = true;
   };
   A.playMenu = function () { A.playTrack(MENU_TRACK); };
-  A.stop = function () { A.playing = false; };
+  A.stop = function () { A.playing = false; if (A.ctx) retireTrackBus(); };
   A.pause = function () { if (A.ctx && A.ctx.state === 'running') A.ctx.suspend(); };
   A.resume = function () {
     if (!A.ctx) return;
@@ -146,7 +158,7 @@
   };
 
   A.sfx = function (kind) {
-    if (!A.ctx || A.ctx.state !== 'running') return;
+    if (!A.ctx || A.ctx.state === 'closed') return;
     const t = A.ctx.currentTime, bus = A.sfxBus;
     switch (kind) {
       case 'death': hiss(t, 0.5, 0.7, 180, bus); tone(240, t, 0.45, 'sawtooth', 0.3, bus, 40); break;
