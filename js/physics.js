@@ -114,7 +114,7 @@
 
   // Box used against blocks (solid geometry). The wave has a small core box.
   function solidInset(p) { return p.mode === 'wave' ? p.size * 0.25 : 0.02 * p.size; }
-  function solidInsetY(p) { return p.mode === 'wave' ? p.size * 0.25 : 0; }
+  function solidInsetY() { return 0; }
   // Box used against hazards (spikes, saws). Forgiving like the original game.
   function hazardInset(p) { return p.mode === 'wave' ? p.size * 0.3 : p.size * 0.12; }
 
@@ -133,7 +133,7 @@
       if (changed) ev && ev.push({ type: 'portal', kind: 'mode', value: q.value });
     } else if (q.kind === 'gravity') {
       if (p.grav !== q.value) {
-        p.grav = q.value; p.vy *= 0.5; p.grounded = false;
+        p.grav = q.value; p.vy *= 0.5; p.grounded = false; p.boost = 0;
         ev && ev.push({ type: 'portal', kind: 'gravity', value: q.value });
       }
     } else if (q.kind === 'speed') {
@@ -182,7 +182,8 @@
     if (p.dead || p.won) return;
     if (hold && !p.holdPrev) p.jumpBuf = 0.1;
     p.holdPrev = hold;
-    const prevY = p.y;
+    // Collision box edges before this step, measured with the mode and size the player had then.
+    const prevBot = p.y + solidInsetY(p), prevTop = p.y + p.size - solidInsetY(p);
 
     while (p.pi < L.portals.length && p.x + p.size / 2 >= L.portals[p.pi].x + 0.5) applyPortal(p, L.portals[p.pi++], ev);
 
@@ -229,7 +230,7 @@
     } else if (m === 'wave') {
       p.vy = g * (hold ? 1 : -1) * p.speed * (s < 1 ? 2 : 1);
     } else if (m === 'robot') {
-      if (p.grounded && hold) { p.vy = g * C.robot.jump * k; p.boost = C.robot.boost; p.grounded = false; ev && ev.push({ type: 'jump' }); }
+      if (p.grounded && hold) { p.vy = g * C.robot.jump * k; p.boost = C.robot.boost; p.grounded = false; p.jumpBuf = 0; ev && ev.push({ type: 'jump' }); }
       if (p.boost > 0 && hold) { p.boost -= dt; p.vy = g * C.robot.jump * k; }
       else { p.boost = 0; gravityStep(p, C.robot.g, C.robot.maxFall, dt); }
     } else if (m === 'spider') {
@@ -264,7 +265,6 @@
     // Solid blocks.
     const inX = solidInset(p), inY = solidInsetY(p);
     const bw = sz - 2 * inX, bh = sz - 2 * inY;
-    const prevBy = prevY + inY;
     const bump = CAN_BUMP[p.mode];
     for (let i = lowerBound(L.blocks, p.x - L.maxBlockW - 1); i < L.blocks.length; i++) {
       const b = L.blocks[i];
@@ -273,11 +273,11 @@
       if (!overlap(bx, by, bw, bh, b.x, b.y, b.w, b.h)) continue;
       const top = b.y + b.h, bottom = b.y;
       if (gg > 0) {
-        if (p.vy <= 0 && prevBy >= top - SNAP) { p.y = top - inY; p.vy = 0; p.grounded = true; continue; }
-        if (bump && p.vy >= 0 && prevBy + bh <= bottom + SNAP) { p.y = bottom - bh - inY; p.vy = 0; continue; }
+        if (p.vy <= 0 && prevBot >= top - SNAP) { p.y = top - inY; p.vy = 0; p.grounded = true; continue; }
+        if (bump && p.vy >= 0 && prevTop <= bottom + SNAP) { p.y = bottom - bh - inY; p.vy = 0; continue; }
       } else {
-        if (p.vy >= 0 && prevBy + bh <= bottom + SNAP) { p.y = bottom - bh - inY; p.vy = 0; p.grounded = true; continue; }
-        if (bump && p.vy <= 0 && prevBy >= top - SNAP) { p.y = top - inY; p.vy = 0; continue; }
+        if (p.vy >= 0 && prevTop <= bottom + SNAP) { p.y = bottom - bh - inY; p.vy = 0; p.grounded = true; continue; }
+        if (bump && p.vy <= 0 && prevBot >= top - SNAP) { p.y = top - inY; p.vy = 0; continue; }
       }
       p.dead = true; ev && ev.push({ type: 'death', cause: 'block' }); return;
     }
@@ -295,7 +295,7 @@
     }
     for (let i = lowerBound(L.saws, p.x - L.maxSawR - 1); i < L.saws.length; i++) {
       const sw = L.saws[i];
-      if (sw.x - sw.r > p.x + sz) break;
+      if (sw.x - L.maxSawR > p.x + sz) break;
       const nx = Math.max(hx, Math.min(sw.x, hx + hw)), ny = Math.max(hy, Math.min(sw.y, hy + hh));
       const rr = sw.r * 0.8;
       if ((nx - sw.x) * (nx - sw.x) + (ny - sw.y) * (ny - sw.y) < rr * rr) {
