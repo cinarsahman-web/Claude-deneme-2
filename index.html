@@ -396,6 +396,10 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
         <button class="btn green small" id="acSave" type="submit">Adı kaydet</button>
       </form>
       <div class="sync" role="status"><i id="acDot"></i><span id="acStatus">İlerleme bu cihazda saklanıyor</span></div>
+      <div id="acOwner" hidden style="display:grid;gap:10px">
+        <p class="note" style="color:var(--volt)">Sahip hesabı: bütün simgeler, renkler ve izler açık.</p>
+        <div class="row" style="justify-content:flex-start"><button class="btn small" id="acFill">Her şeyi tamamla</button></div>
+      </div>
       <p class="note" id="acOffline">Hesap, oyun claude.ai'de oturum açıkken açıldığında çalışır. Hesap varken ilerlemen buluta kaydedilir, başka cihazda kaldığın yerden devam edersin ve sıralamaya girersin. Şu an ilerlemen yalnızca bu cihazda.</p>
     </div>
     <h3 class="section-title" id="acBoardTitle" hidden>Sıralama</h3>

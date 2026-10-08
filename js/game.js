@@ -80,7 +80,9 @@
   // Thresholds are capped at what the installed levels can award, so every item stays reachable.
   const reqStars = req => Math.min(req.stars, maxStars());
   const reqCoins = req => Math.min(req.coins, maxCoins());
-  const reqMet = req => !req || (req.stars ? totalStars() >= reqStars(req) : totalCoins() >= reqCoins(req));
+  // The artifact's owner has every character item unlocked.
+  let ownerAll = false;
+  const reqMet = req => !req || ownerAll || (req.stars ? totalStars() >= reqStars(req) : totalCoins() >= reqCoins(req));
   const reqText = req => req.stars ? `${reqStars(req)}★` : `${reqCoins(req)} para`;
   function unlockedSet() {
     const s = new Set();
@@ -473,6 +475,8 @@
     if (!db || !user || !uid) { setStatus('local'); return; }
     Acct.db = db; Acct.user = user; Acct.uid = uid;
     Acct.me = await user.me();
+    ownerAll = await user.isOwner();
+    if (ownerAll && screen === 'scrGarage') renderGarage();
     setStatus('busy');
     try {
       const snap = await saveRef().get();
@@ -506,12 +510,20 @@
     $('acWho').textContent = on ? (Acct.me && Acct.me.name ? `claude.ai: ${Acct.me.name}` : 'claude.ai hesabı') : 'claude.ai hesabı bağlı değil';
     $('acForm').hidden = !on || Acct.readonly;
     $('acOffline').hidden = on;
+    $('acOwner').hidden = !ownerAll;
     if (on && document.activeElement !== $('acNickInput')) $('acNickInput').value = cleanNick(save.profile.nick);
     const dot = { ok: 'ok', busy: 'busy', bad: 'bad' }[Acct.status] || '';
     $('acDot').className = dot;
     $('acStatus').textContent = Acct.note || ({ ok: 'Bulutla eşitlendi', busy: 'Eşitleniyor…', local: 'İlerleme bu cihazda saklanıyor' }[Acct.status] || 'İlerleme bu cihazda saklanıyor');
     $('acBoardTitle').hidden = !on; $('acBoard').hidden = !on || !Acct.board.length; $('acBoardEmpty').hidden = !on || Acct.board.length > 0;
   }
+  $('acFill').addEventListener('click', () => {
+    if (!ownerAll) return;
+    for (const d of DEFS) { const l = lvSave(d.id); l.best = 100; l.practice = 100; l.done = true; l.coins = [true, true, true]; }
+    persist(); flushCloud(); A.sfx('unlock');
+    toast('Bütün bölümler, paralar ve yıldızlar tamamlandı', 'good');
+    renderAccount(); renderAccountChip();
+  });
   $('acForm').addEventListener('submit', e => {
     e.preventDefault();
     const n = cleanNick($('acNickInput').value);
