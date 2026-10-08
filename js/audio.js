@@ -147,7 +147,16 @@
     A.pattern = compile(A.track);
     A.stepIdx = 0;
     A.nextTime = A.ctx.currentTime + 0.06;
+    A.trackStart = A.nextTime;
     A.playing = true;
+  };
+  // 1 on each beat of the playing track, decaying to 0 before the next one; 0 when silent.
+  A.beat = function () {
+    if (!A.ctx || !A.playing || !A.pattern || A.ctx.state !== 'running') return 0;
+    const el = A.ctx.currentTime - (A.trackStart || 0);
+    if (el < 0) return 0;
+    const ph = (el / (A.pattern.s16 * 4)) % 1;
+    return (1 - ph) * (1 - ph) * (1 - ph);
   };
   A.playMenu = function () { A.playTrack(MENU_TRACK); };
   A.stop = function () { A.playing = false; if (A.ctx) retireTrackBus(); };

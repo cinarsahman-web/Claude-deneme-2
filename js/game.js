@@ -72,7 +72,8 @@
 
   // ---------- Unlocks ----------
   const ICON_REQ = [null, null, { stars: 1 }, { stars: 3 }, { stars: 6 }, { stars: 10 }, { stars: 15 }, { stars: 21 }, { stars: 28 },
-    { stars: 36 }, { stars: 45 }, { stars: 55 }, { stars: 67 }, { coins: 3 }, { coins: 6 }, { coins: 10 }, { coins: 16 }, { coins: 24 }, { owner: true }];
+    { stars: 36 }, { stars: 45 }, { stars: 55 }, { stars: 67 }, { coins: 3 }, { coins: 6 }, { coins: 10 }, { coins: 16 }, { coins: 24 }, { owner: true },
+    { stars: 18 }, { stars: 33 }, { coins: 8 }, { coins: 13 }, { coins: 19 }, { stars: 50 }];
   const COLOR_REQ = [null, null, null, null, null, null, { stars: 3 }, { stars: 8 }, { stars: 14 }, { stars: 22 }, { coins: 2 }, { coins: 5 },
     { coins: 9 }, { coins: 14 }, { stars: 40 }, { coins: 20 }];
   const TRAILS = [
@@ -329,7 +330,13 @@
     const modes = KK.MODES, n = modes.length, slot = w / n, s = Math.min(slot * 0.55, h * 0.42);
     const ch = charColors();
     modes.forEach((m, i) => {
-      gpc.save(); gpc.translate(slot * (i + 0.5), h * 0.45 + Math.sin(t * 3 + i) * 3);
+      const cx = slot * (i + 0.5), cy = h * 0.45;
+      const glow = gpc.createRadialGradient(cx, cy, s * 0.1, cx, cy, s * 1.1);
+      glow.addColorStop(0, R.shade(ch.c1, 0, 0.35)); glow.addColorStop(1, R.shade(ch.c1, 0, 0));
+      gpc.fillStyle = glow; gpc.fillRect(cx - s * 1.1, cy - s * 1.1, s * 2.2, s * 2.2);
+      gpc.fillStyle = 'rgba(0,0,0,.35)';
+      gpc.beginPath(); gpc.ellipse(cx, cy + s * 0.72, s * 0.45, s * 0.08, 0, 0, Math.PI * 2); gpc.fill();
+      gpc.save(); gpc.translate(cx, cy + Math.sin(t * 3 + i) * 3);
       if (m === 'cube') gpc.rotate(Math.sin(t * 2) * 0.3);
       if (m === 'ball') gpc.rotate(t * 3);
       if (m === 'wave') gpc.rotate(-0.6);
@@ -720,6 +727,7 @@
     $('hud').hidden = false;
     setPracticeUI();
     A.playTrack(def.music);
+    game.intro = practice ? 0 : 2.6;
     respawn(true);
     cv.focus({ preventScroll: true });
   }
@@ -986,6 +994,10 @@
         }
       }
       updateRotation(dt);
+      if (g.p.grounded && !g.wasGrounded && (g.p.mode === 'cube' || g.p.mode === 'robot' || g.p.mode === 'spider')) g.squash = 1;
+      g.wasGrounded = g.p.grounded;
+      g.squash = Math.max(0, (g.squash || 0) - dt * 6);
+      g.intro = Math.max(0, (g.intro || 0) - dt);
       updateTrail(dt);
     } else if (gstate === 'dead') {
       g.deadT -= dt;
@@ -1086,10 +1098,20 @@
   }
 
   // ---------- Draw ----------
-  function drawPlayer(p, rot, t, alpha) {
+  function drawPlayer(p, rot, t, alpha, squash) {
     const s = p.size * view.PX, ch = charColors();
     const cx = (p.x + p.size / 2 - view.camX) * view.PX, cy = view.GY - (p.y + p.size / 2 - view.camY) * view.PX;
+    if (alpha >= 1 && !save.settings.lowDetail) {
+      const g = ctx.createRadialGradient(cx, cy, s * 0.2, cx, cy, s * 1.25);
+      g.addColorStop(0, R.shade(ch.c1, 0, 0.32)); g.addColorStop(1, R.shade(ch.c1, 0, 0));
+      ctx.fillStyle = g; ctx.fillRect(cx - s * 1.25, cy - s * 1.25, s * 2.5, s * 2.5);
+    }
     ctx.save(); ctx.translate(cx, cy); ctx.globalAlpha = alpha;
+    if (squash) {
+      // Landing squash, anchored at the feet (gravity side).
+      const k = squash * 0.22, foot = s / 2 * p.grav;
+      ctx.translate(0, foot); ctx.scale(1 + k, 1 - k); ctx.translate(0, -foot);
+    }
     ctx.rotate(rot);
     if (p.grav < 0 && p.mode !== 'cube' && p.mode !== 'ball' && p.mode !== 'wave') ctx.scale(1, -1);
     R.drawForm(ctx, p.mode, s, ch, t);
@@ -1121,12 +1143,26 @@
       ctx.globalAlpha = 1;
     }
   }
+  function drawIntro(g) {
+    const a = Math.min(1, g.intro / 0.5) * Math.min(1, (2.6 - g.intro) / 0.3);
+    const D = KK.DIFFICULTIES[g.def.difficulty] || KK.DIFFICULTIES.easy;
+    ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center';
+    const y = H * 0.3, size = Math.max(20, Math.min(54, W / 14));
+    ctx.font = `${Math.round(size * 0.36)}px Rubik, sans-serif`; ctx.fillStyle = D.color;
+    ctx.fillText(`BÖLÜM ${g.idx + 1} · ${D.label.toLocaleUpperCase('tr')} · ${g.def.stars}★`, W / 2, y - size * 0.95);
+    ctx.font = `${Math.round(size)}px Bungee, Impact, sans-serif`;
+    ctx.lineWidth = Math.max(3, size * 0.12); ctx.strokeStyle = 'rgba(10,8,30,.85)'; ctx.strokeText(g.def.name, W / 2, y);
+    ctx.fillStyle = '#ffd23f'; ctx.fillText(g.def.name, W / 2, y);
+    ctx.restore();
+  }
   function draw(t) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const low = save.settings.lowDetail;
     if (game) {
       const g = game, L = g.L;
-      R.drawBackground(ctx, view, g.hue, g.groundHue, t, low);
+      const beat = A.beat();
+      R.drawBackground(ctx, view, g.hue, g.groundHue, t, low, R.themeFor(g.def), beat);
+      if (!low && gstate === 'play') R.drawSpeedLines(ctx, view, g.p.speed, t);
       ctx.save();
       if (g.shake > 0) ctx.translate((Math.random() - 0.5) * g.shake * 16, (Math.random() - 0.5) * g.shake * 16);
       // Attempt label sits in the world near the start, like a sign.
@@ -1135,7 +1171,7 @@
       const label = g.practice ? 'Pratik' : `Deneme ${g.attempt}`;
       const lx = g.practice && g.checkpoints.length ? null : 3;
       if (lx !== null) ctx.fillText(label, (lx - view.camX) * view.PX, view.GY - (4.6 - view.camY) * view.PX);
-      R.drawGround(ctx, view, g.hue, g.groundHue, L, low);
+      R.drawGround(ctx, view, g.hue, g.groundHue, L, low, beat);
       R.drawLevel(ctx, L, view, g.p, t, g.hue, low);
       // Checkpoints.
       for (const cp of g.checkpoints) {
@@ -1156,15 +1192,20 @@
         const gp = g.ghost, grot = gp.mode === 'ship' || gp.mode === 'wave' ? -Math.atan2(gp.vy, gp.speed) : 0;
         drawPlayer(gp, grot, t, 0.32);
       }
-      if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(g.p, g.rot, t, 1);
+      if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(g.p, g.rot, t, 1, g.squash);
       R.drawParticles(ctx, view, particles);
       ctx.restore();
+      if (!low) R.drawVignette(ctx, view);
+      if (g.intro > 0) drawIntro(g);
       if (g.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${g.flash * 0.5})`; ctx.fillRect(0, 0, W, H); }
     } else {
-      R.drawBackground(ctx, view, demo.hue, demo.hue, t, low);
-      R.drawGround(ctx, view, demo.hue, demo.hue, demoL, low);
+      // The menu backdrop tours the level themes.
+      const beat = A.beat(), theme = R.THEMES[Math.floor(t / 16) % R.THEMES.length];
+      R.drawBackground(ctx, view, demo.hue, demo.hue, t, low, theme, beat);
+      R.drawGround(ctx, view, demo.hue, demo.hue, demoL, low, beat);
       R.drawLevel(ctx, demoL, view, null, t, demo.hue, low);
       drawPlayer(demo.p, demo.rot, t, 1);
+      if (!low) R.drawVignette(ctx, view);
     }
   }
 
