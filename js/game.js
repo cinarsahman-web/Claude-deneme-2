@@ -18,9 +18,10 @@
     return {
       v: 2, levels: {},
       stats: { attempts: 0, practiceAttempts: 0, jumps: 0, deaths: 0, orbs: 0, playTime: 0 },
-      settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion },
+      settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion, ghost: true },
       char: { icon: 0, c1: 0, c2: 1, trail: 1 },
       profile: { nick: '' },
+      ghosts: {}, ach: {},
       updatedAt: 0, resetAt: 0,
     };
   }
@@ -46,6 +47,7 @@
     s.char = merge(d.char, s.char);
     s.profile = merge(d.profile, s.profile);
     for (const k of ['updatedAt', 'resetAt']) if (typeof s[k] !== 'number') s[k] = 0;
+    for (const k of ['ghosts', 'ach']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};
     if (!s.levels || typeof s.levels !== 'object') s.levels = {};
     return s;
   }
@@ -137,7 +139,7 @@
   }
 
   // ---------- Screens ----------
-  const SCREENS = ['scrMain', 'scrLevels', 'scrGarage', 'scrSettings', 'scrStats', 'scrAccount'];
+  const SCREENS = ['scrMain', 'scrLevels', 'scrGarage', 'scrSettings', 'scrStats', 'scrAccount', 'scrAch'];
   let screen = 'scrMain';
   function showScreen(id) {
     for (const s of SCREENS) $(s).hidden = s !== id;
@@ -150,6 +152,7 @@
     if (id === 'scrGarage') renderGarage();
     if (id === 'scrSettings') renderSettings();
     if (id === 'scrStats') renderStats();
+    if (id === 'scrAch') renderAch();
     if (id === 'scrAccount') { renderAccount(); startBoard(); }
     const first = id === 'scrLevels' ? $('lvPlay') : $(id).querySelector('button');
     if (first) first.focus({ preventScroll: true });
@@ -175,7 +178,8 @@
   $('mSettings').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrSettings'); });
   $('mStats').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrStats'); });
   $('mAccount').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrAccount'); });
-  for (const id of ['lvBack', 'gBack', 'sBack', 'stBack', 'acBack']) $(id).addEventListener('click', () => { click(); showScreen('scrMain'); });
+  $('mAch').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrAch'); });
+  for (const id of ['lvBack', 'gBack', 'sBack', 'stBack', 'acBack', 'achBack']) $(id).addEventListener('click', () => { click(); showScreen('scrMain'); });
 
   // Level select
   let lvIndex = 0;
@@ -285,7 +289,7 @@
         if (locked) { toast(`Kilitli: ${reqText(it.req)} gerekli`); return; }
         click();
         if (gTab === 'icon') save.char.icon = it.i; else if (gTab === 'trail') save.char.trail = it.i; else save.char[gTab] = it.i;
-        persist(); renderGarage();
+        persist(); checkAch({}); renderGarage();
         const sel = grid.querySelector('.sel'); if (sel) sel.focus({ preventScroll: true });
       });
       grid.appendChild(b);
@@ -340,7 +344,7 @@
   function renderSettings() {
     $('setMusic').value = save.settings.music; $('setSfx').value = save.settings.sfx;
     $('setPct').checked = save.settings.showPct; $('setLow').checked = save.settings.lowDetail;
-    $('setAutoCp').checked = save.settings.autoCp; $('setShake').checked = save.settings.shake;
+    $('setAutoCp').checked = save.settings.autoCp; $('setShake').checked = save.settings.shake; $('setGhost').checked = save.settings.ghost;
     $('resetConfirm').hidden = true;
   }
   function bindVolume(id, key) {
@@ -353,7 +357,7 @@
     });
   }
   bindVolume('setMusic', 'music'); bindVolume('setSfx', 'sfx'); bindVolume('pMusic', 'music'); bindVolume('pSfx', 'sfx');
-  for (const [id, key] of [['setPct', 'showPct'], ['setLow', 'lowDetail'], ['setAutoCp', 'autoCp'], ['setShake', 'shake']]) {
+  for (const [id, key] of [['setPct', 'showPct'], ['setLow', 'lowDetail'], ['setAutoCp', 'autoCp'], ['setShake', 'shake'], ['setGhost', 'ghost']]) {
     $(id).addEventListener('change', e => { save.settings[key] = e.target.checked; persist(); click(); });
   }
   $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; $('resetNo').focus(); });
@@ -383,6 +387,71 @@
       DEFS.map(d => { const l = lvSave(d.id); return `<div class="stat"><span>${esc(d.name)}</span><strong>${l.best}%</strong><span>Pratik ${l.practice}% · ${l.coins.filter(Boolean).length}/3 para · ${l.attempts} deneme</span></div>`; }).join('');
   }
 
+
+
+  // ---------- Ghost of the best run ----------
+  // Physics is deterministic, so a run is just the step numbers where the button changed.
+  function validGhost(gh) {
+    if (!gh || typeof gh !== 'object' || !Array.isArray(gh.t) || gh.t.length > 20000) return null;
+    if (!gh.t.every((v, i) => Number.isInteger(v) && v >= 0 && (i === 0 || v > gh.t[i - 1]))) return null;
+    const pct = typeof gh.pct === 'number' ? Math.max(0, Math.min(100, gh.pct)) : 0;
+    return { pct, h0: !!gh.h0, t: gh.t.slice() };
+  }
+  function storeGhost(pct) {
+    const g = game;
+    if (!g || g.practice || !g.rec) return;
+    const old = save.ghosts[g.def.id];
+    if (old && old.pct >= pct && pct < 100) return;
+    if (old && old.pct >= 100 && pct >= 100 && old.t.length <= g.rec.t.length) return;
+    save.ghosts[g.def.id] = { pct, h0: g.rec.h0, t: g.rec.t.slice() };
+  }
+
+  // ---------- Achievements ----------
+  const doneCount = () => DEFS.filter(d => lvSave(d.id).done).length;
+  const ACH = [
+    { id: 'first', name: 'İlk zafer', desc: 'Bir bölümü bitir', prog: () => [Math.min(1, doneCount()), 1] },
+    { id: 'half', name: 'Yarı yol', desc: '6 bölüm bitir', prog: () => [doneCount(), 6] },
+    { id: 'all', name: 'Kare ustası', desc: 'Bütün bölümleri bitir', prog: () => [doneCount(), DEFS.length] },
+    { id: 'demon', name: 'Şeytan avcısı', desc: 'Şeytani bölümü bitir', prog: () => [DEFS.filter(d => d.difficulty === 'demon' && lvSave(d.id).done).length, 1] },
+    { id: 'coins10', name: 'Para avcısı', desc: '10 gizli para topla', prog: () => [totalCoins(), 10] },
+    { id: 'coinsAll', name: 'Hazine', desc: 'Bütün gizli paraları topla', prog: () => [totalCoins(), maxCoins()] },
+    { id: 'att100', name: 'Israrcı', desc: '100 deneme yap', prog: () => [save.stats.attempts, 100] },
+    { id: 'att1000', name: 'Pes etmek yok', desc: '1000 deneme yap', prog: () => [save.stats.attempts, 1000] },
+    { id: 'jumps', name: 'Zıp zıp', desc: '1000 kez zıpla', prog: () => [save.stats.jumps, 1000] },
+    { id: 'orbs', name: 'Halka ustası', desc: '200 halka kullan', prog: () => [save.stats.orbs, 200] },
+    { id: 'hour', name: 'Gece kuşu', desc: 'Toplam 1 saat oyna', prog: () => [Math.floor(save.stats.playTime / 60), 60] },
+    { id: 'style', name: 'Tarz sahibi', desc: 'Varsayılandan farklı bir simge seç', prog: () => [save.char.icon !== 0 ? 1 : 0, 1] },
+    { id: 'practice', name: 'Antrenman', desc: 'Bir bölümü pratik modunda bitir', event: c => c.completed && c.practice },
+    { id: 'firstTry', name: 'Tek atış', desc: 'Bir bölümü ilk denemede bitir', event: c => c.completed && !c.practice && c.attempt === 1 },
+    { id: 'perfect', name: 'Kusursuz', desc: 'Tek koşuda 3 parayı da alıp bölümü bitir', event: c => c.completed && !c.practice && c.runCoins === 3 },
+    { id: 'soClose', name: 'Az kaldı', desc: 'Bir bölümde %95 ya da sonrasında öl', event: c => c.diedAt >= 95 },
+  ];
+  function checkAch(ctx, silent) {
+    const got = [];
+    for (const a of ACH) {
+      if (save.ach[a.id]) continue;
+      const ok = a.event ? !!a.event(ctx || {}) : (() => { const [cur, max] = a.prog(); return cur >= max; })();
+      if (ok) { save.ach[a.id] = Date.now(); got.push(a); }
+    }
+    if (got.length && !silent) {
+      A.sfx('unlock');
+      got.slice(0, 3).forEach((a, i) => setTimeout(() => toast(`Başarım: ${a.name}`, 'good'), i * 700));
+    }
+    return got.length;
+  }
+  function renderAch() {
+    const n = ACH.filter(a => save.ach[a.id]).length;
+    $('achCount').textContent = `${n}/${ACH.length}`;
+    $('achGrid').innerHTML = ACH.map(a => {
+      const on = !!save.ach[a.id];
+      let bar = '';
+      if (!on && a.prog) {
+        const [cur, max] = a.prog(), pc = Math.min(100, Math.floor(cur / max * 100));
+        bar = `<div class="bar"><i style="width:${pc}%"></i></div><span>${Math.min(cur, max)}/${max}</span>`;
+      }
+      return `<div class="ach ${on ? 'on' : ''}"><div class="medal" aria-hidden="true">${on ? '★' : '?'}</div><div><b>${a.name}</b><p>${a.desc}</p>${bar}</div></div>`;
+    }).join('');
+  }
 
   // ---------- Account: claude.ai identity, cloud save and leaderboard ----------
   // The account is the viewer's claude.ai sign-in (no passwords). Progress lives in the viewer's
@@ -427,6 +496,11 @@
     }
     save.updatedAt = Math.max(save.updatedAt, cUpd);
     save.resetAt = Math.max(save.resetAt, cReset);
+    if (c.ach && typeof c.ach === 'object') for (const k of Object.keys(c.ach)) if (ACH.some(a => a.id === k) && !save.ach[k]) save.ach[k] = num(c.ach[k]) || 1;
+    if (c.ghosts && typeof c.ghosts === 'object') for (const k of Object.keys(c.ghosts)) {
+      const gh = validGhost(c.ghosts[k]);
+      if (gh && DEFS.some(d => String(d.id) === k) && (!save.ghosts[k] || gh.pct > save.ghosts[k].pct)) save.ghosts[k] = gh;
+    }
     if (save.char.icon >= R.ICONS.length) save.char.icon = 0;
     if (save.char.c1 >= R.COLORS.length) save.char.c1 = 0;
     if (save.char.c2 >= R.COLORS.length) save.char.c2 = 1;
@@ -528,7 +602,7 @@
   $('acFill').addEventListener('click', () => {
     if (!ownerAll) return;
     for (const d of DEFS) { const l = lvSave(d.id); l.best = 100; l.practice = 100; l.done = true; l.coins = [true, true, true]; }
-    persist(); flushCloud(); A.sfx('unlock');
+    checkAch({}); persist(); flushCloud(); A.sfx('unlock');
     toast('Bütün bölümler, paralar ve yıldızlar tamamlandı', 'good');
     renderAccount(); renderAccountChip();
   });
@@ -661,6 +735,16 @@
       if (!g.practice) A.playTrack(g.def.music);
     }
     g.p.holdPrev = holding(); g.p.jumpBuf = 0;
+    // Record this run's input changes; replay the best run's as a ghost (normal mode, from the start only).
+    g.rec = null; g.ghost = null;
+    if (!g.practice && !cp) {
+      g.rec = { h0: g.p.holdPrev, t: [], step: 0, last: g.p.holdPrev };
+      const best = save.ghosts[g.def.id];
+      if (best && save.settings.ghost) {
+        g.ghost = KK.newPlayer(L); g.ghost.holdPrev = best.h0;
+        g.gh = { t: best.t, i: 0, step: 0, input: best.h0 };
+      }
+    }
     g.attempt++;
     if (g.practice) save.stats.practiceAttempts++;
     else { save.stats.attempts++; ls.attempts++; }
@@ -756,7 +840,9 @@
       const first = ls.best === 0;
       ls.best = pct;
       if (!first || pct >= 10) toast(`Yeni rekor! %${pct}`);
+      storeGhost(pct);
     }
+    checkAch({ diedAt: g.practice ? 0 : pct });
     persist();
   }
   const pctOf = p => Math.max(0, Math.min(100, Math.floor(p.x / game.L.end * 100)));
@@ -773,7 +859,9 @@
       if (!ls.done) earned = `+${g.def.stars}★`;
       ls.done = true; ls.best = 100;
       for (const idx of p.coins) { if (!ls.coins[idx]) newCoins.push(idx); ls.coins[idx] = true; }
+      storeGhost(100);
     }
+    checkAch({ completed: true, practice: g.practice, attempt: g.attempt, runCoins: p.coins.size });
     persist();
     const after = unlockedSet();
     const unlocked = [...after].filter(k => !before.has(k));
@@ -870,6 +958,12 @@
         const ev = [];
         const prevMode = g.p.mode;
         const input = auto ? !!auto.actions[Math.floor(auto.i++ / auto.K)] : holding();
+        if (g.rec) { if (input !== g.rec.last) { g.rec.t.push(g.rec.step); g.rec.last = input; } g.rec.step++; }
+        if (g.ghost && !g.ghost.dead && !g.ghost.won) {
+          const gh = g.gh;
+          while (gh.i < gh.t.length && gh.t[gh.i] === gh.step) { gh.input = !gh.input; gh.i++; }
+          KK.step(g.ghost, L, DT, gh.input); gh.step++;
+        }
         KK.step(g.p, L, DT, input, ev);
         if (ev.length) handleEvents(ev);
         if (g.p.dead) { die(); break; }
@@ -1051,6 +1145,10 @@
         ctx.beginPath(); ctx.arc((r.x - view.camX) * view.PX, view.GY - (r.y - view.camY) * view.PX, r.r * view.PX, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      if (g.ghost && !g.ghost.dead && gstate !== 'complete') {
+        const gp = g.ghost, grot = gp.mode === 'ship' || gp.mode === 'wave' ? -Math.atan2(gp.vy, gp.speed) : 0;
+        drawPlayer(gp, grot, t, 0.32);
+      }
       if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(g.p, g.rot, t, 1);
       R.drawParticles(ctx, view, particles);
       ctx.restore();
@@ -1078,6 +1176,7 @@
   // ---------- Boot ----------
   resize();
   showScreen('scrMain');
+  if (checkAch({}, true)) persistLocal();
   initAccount();
   // Expose a small handle for automated tests.
   window.__kk = {
