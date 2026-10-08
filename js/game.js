@@ -18,7 +18,7 @@
     return {
       v: 2, levels: {},
       stats: { attempts: 0, practiceAttempts: 0, jumps: 0, deaths: 0, orbs: 0, playTime: 0 },
-      settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion, ghost: true },
+      settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion, ghost: true, fpsCap: 0, showFps: false },
       char: { icon: 0, c1: 0, c2: 1, trail: 1 },
       profile: { nick: '' },
       ghosts: {}, ach: {},
@@ -351,7 +351,7 @@
   function renderSettings() {
     $('setMusic').value = save.settings.music; $('setSfx').value = save.settings.sfx;
     $('setPct').checked = save.settings.showPct; $('setLow').checked = save.settings.lowDetail;
-    $('setAutoCp').checked = save.settings.autoCp; $('setShake').checked = save.settings.shake; $('setGhost').checked = save.settings.ghost;
+    $('setAutoCp').checked = save.settings.autoCp; $('setShake').checked = save.settings.shake; $('setGhost').checked = save.settings.ghost; $('setFps').checked = save.settings.showFps; $('setFpsCap').value = String(save.settings.fpsCap);
     $('resetConfirm').hidden = true;
   }
   function bindVolume(id, key) {
@@ -363,8 +363,9 @@
       persist();
     });
   }
+  $('setFpsCap').addEventListener('change', e => { save.settings.fpsCap = Number(e.target.value) || 0; nextFrameAt = 0; persist(); click(); });
   bindVolume('setMusic', 'music'); bindVolume('setSfx', 'sfx'); bindVolume('pMusic', 'music'); bindVolume('pSfx', 'sfx');
-  for (const [id, key] of [['setPct', 'showPct'], ['setLow', 'lowDetail'], ['setAutoCp', 'autoCp'], ['setShake', 'shake'], ['setGhost', 'ghost']]) {
+  for (const [id, key] of [['setPct', 'showPct'], ['setLow', 'lowDetail'], ['setAutoCp', 'autoCp'], ['setShake', 'shake'], ['setGhost', 'ghost'], ['setFps', 'showFps']]) {
     $(id).addEventListener('change', e => { save.settings[key] = e.target.checked; persist(); click(); });
   }
   $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; $('resetNo').focus(); });
@@ -765,6 +766,7 @@
     else { save.stats.attempts++; ls.attempts++; }
     persist();
     g.cpTimer = 0; g.trail = []; g.ribbon = []; particles = []; rings = [];
+    g.prev = null; g.gprev = null;
     if (auto) auto.i = 0;
     acc = 0; gstate = 'play';
     [g.hue, g.groundHue] = hueAt(L, g.p.x, g.def);
@@ -981,6 +983,8 @@
           while (gh.i < gh.t.length && gh.t[gh.i] === gh.step) { gh.input = !gh.input; gh.i++; }
           KK.step(g.ghost, L, DT, gh.input); gh.step++;
         }
+        g.prev = [g.p.x, g.p.y];
+        if (g.ghost) g.gprev = [g.ghost.x, g.ghost.y];
         KK.step(g.p, L, DT, input, ev);
         if (ev.length) handleEvents(ev);
         if (g.p.dead) { die(); break; }
@@ -1007,7 +1011,7 @@
     }
     // Camera.
     const p = g.p;
-    const tx = Math.min(p.x, L.end) - (W * 0.3) / view.PX;
+    const tx = Math.min(lerpBody(p, g.prev).x, L.end) - (W * 0.3) / view.PX;
     view.camX += (tx - view.camX) * Math.min(1, dt * 20);
     view.camY += (cameraTargetY(p) - view.camY) * Math.min(1, dt * 5);
     // Colours.
@@ -1047,7 +1051,13 @@
   function rainbowShock(x, y, n = 3) {
     for (let i = 0; i < n; i++) rings.push({ x, y, r: 0.2 + i * 0.15, life: 0.45 + i * 0.08, color: rainbowCol(i * 120), w: 4 });
   }
+  // Trail effects tick at a fixed 60 Hz so 144/240 Hz screens get the same amount of particles and trail length.
   function updateTrail(dt) {
+    const g = game;
+    g.fxAcc = Math.min(0.1, (g.fxAcc || 0) + dt);
+    while (g.fxAcc >= 1 / 60) { g.fxAcc -= 1 / 60; trailTick(); }
+  }
+  function trailTick() {
     const g = game, p = g.p, ch = charColors(), kind = isRainbow() ? 3 : save.char.trail;
     const cx = p.x + p.size / 2, cy = p.y + p.size / 2;
     if (kind === 1 && Math.random() < 0.6) particles.push({ x: cx - p.size * 0.4, y: cy + (Math.random() - 0.5) * 0.4 * p.size, vx: -1.5, vy: (Math.random() - 0.5), life: 0.3, max: 0.3, size: 0.12 + Math.random() * 0.1, color: Math.random() < 0.5 ? ch.c1 : ch.c2 });
@@ -1170,6 +1180,12 @@
     ctx.fillStyle = '#ffd23f'; ctx.fillText(g.def.name, W / 2, y);
     ctx.restore();
   }
+  // Where to draw a physics body this frame: between its last two 240 Hz steps, so motion is smooth at any refresh rate.
+  function lerpBody(p, prev) {
+    if (!prev || p.dead || gstate !== 'play') return p;
+    const k = Math.min(1, acc / DT);
+    return Object.assign({}, p, { x: prev[0] + (p.x - prev[0]) * k, y: prev[1] + (p.y - prev[1]) * k });
+  }
   function drawRainbowLines(L, t, beat) {
     const PX = view.PX, lines = [view.GY + view.camY * PX];
     for (const seg of L.ceilSegs) if (isFinite(seg.ceil) && seg.x0 <= view.camX + W / PX && seg.x1 >= view.camX) lines.push(view.GY - (seg.ceil - view.camY) * PX);
@@ -1243,10 +1259,11 @@
       ctx.globalAlpha = 1;
       if (g.ghost && !g.ghost.dead && gstate !== 'complete') {
         const gp = g.ghost, grot = gp.mode === 'ship' || gp.mode === 'wave' ? -Math.atan2(gp.vy, gp.speed) : 0;
-        drawPlayer(gp, grot, t, 0.32);
+        drawPlayer(lerpBody(gp, g.gprev), grot, t, 0.32);
       }
-      if (isRainbow() && gstate !== 'dead') drawRainbowAura(g.p, t, beat);
-      if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(g.p, g.rot, t, 1, g.squash);
+      const shown = lerpBody(g.p, g.prev);
+      if (isRainbow() && gstate !== 'dead') drawRainbowAura(shown, t, beat);
+      if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(shown, g.rot, t, 1, g.squash);
       R.drawParticles(ctx, view, particles);
       ctx.restore();
       if (!low) R.drawVignette(ctx, view);
@@ -1263,7 +1280,21 @@
     }
   }
 
+  let nextFrameAt = 0, fpsFrames = 0, fpsSince = 0;
   function frame(now) {
+    requestAnimationFrame(frame);
+    // Optional frame-rate cap; 0 = draw on every screen refresh (60, 144, 240 Hz...).
+    const cap = save.settings.fpsCap;
+    if (cap > 0) {
+      if (now < nextFrameAt - 0.5) return;
+      nextFrameAt = Math.max(nextFrameAt + 1000 / cap, now);
+    }
+    fpsFrames++;
+    if (now - fpsSince >= 500) {
+      $('fpsBox').textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} FPS`;
+      fpsFrames = 0; fpsSince = now;
+    }
+    $('fpsBox').hidden = !save.settings.showFps;
     const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
     clock += dt;
@@ -1272,7 +1303,6 @@
     updateFx(dt);
     draw(clock);
     if (!game && screen === 'scrGarage') drawGaragePreview(clock);
-    requestAnimationFrame(frame);
   }
 
   // ---------- Boot ----------

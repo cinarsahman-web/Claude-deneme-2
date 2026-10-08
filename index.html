@@ -273,6 +273,9 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
 .board .score b { font-family: var(--display); font-weight: 400; color: var(--volt); font-size: 16px; }
 .board .score span { color: var(--coin); font-size: 13px; margin-left: 6px; }
 .section-title { margin: 6px 0 0; font-family: var(--display); font-weight: 400; font-size: 18px; color: var(--glow); }
+.fps { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); z-index: 40; pointer-events: none;
+  font: 600 12px var(--body); font-variant-numeric: tabular-nums; color: var(--leaf); background: rgba(0,0,0,.45); border-radius: 6px; padding: 2px 7px; }
+.sel { font: inherit; font-weight: 600; color: #fff; background: rgba(0,0,0,.4); border: 2px solid rgba(255,255,255,.5); border-radius: 10px; padding: 7px 10px; }
 /* Achievements */
 .ach-grid { width: 100%; max-width: 760px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
 .ach { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: center; background: rgba(0,0,0,.3); border: 2px solid rgba(255,255,255,.15); border-radius: 14px; padding: 10px 12px; }
@@ -316,6 +319,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
   <button class="icon-btn" id="cpDel" aria-label="Son kontrol noktasını sil (X)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4 16 16M16 4 4 16" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
 </div>
 <div class="practice-tag" id="practiceTag" hidden>PRATİK MODU</div>
+<div class="fps" id="fpsBox" hidden aria-hidden="true">0 FPS</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- Main menu -->
@@ -371,6 +375,9 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
     <div class="set-row"><label for="setPct">Yüzdeyi göster<small>Oyun sırasında ilerleme yüzdesi</small></label><input type="checkbox" class="switch" id="setPct"></div>
     <div class="set-row"><label for="setLow">Düşük detay<small>Parlama ve arka plan desenini kapatır, yavaş cihazlarda akıcılaştırır</small></label><input type="checkbox" class="switch" id="setLow"></div>
     <div class="set-row"><label for="setAutoCp">Otomatik kontrol noktası<small>Pratik modunda birkaç saniyede bir güvenli yere koyar</small></label><input type="checkbox" class="switch" id="setAutoCp"></div>
+    <div class="set-row"><label for="setFpsCap">Kare hızı<small>"Ekran hızı" 144 ve 240 Hz ekranlarda da tam akıcılık verir</small></label>
+      <select id="setFpsCap" class="sel"><option value="0">Ekran hızı</option><option value="240">240 FPS</option><option value="144">144 FPS</option><option value="120">120 FPS</option><option value="60">60 FPS</option><option value="30">30 FPS</option></select></div>
+    <div class="set-row"><label for="setFps">FPS göster<small>Sağ altta anlık kare hızını gösterir</small></label><input type="checkbox" class="switch" id="setFps"></div>
     <div class="set-row"><label for="setGhost">Hayalet<small>Bölümdeki en iyi denemen yarı saydam bir kopya olarak seninle koşar</small></label><input type="checkbox" class="switch" id="setGhost"></div>
     <div class="set-row"><label for="setShake">Ekran sarsıntısı<small>Ölünce ekran sallanır</small></label><input type="checkbox" class="switch" id="setShake"></div>
     <div class="set-row" style="display:grid">
