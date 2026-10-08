@@ -5,7 +5,7 @@ KK.registerLevel({
   stars: 12,
   length: 520,
   hue: 0,
-  music: { bpm: 190, root: 38, scale: 'harmonic', prog: [0, 5, 3, 4], drums: 'dnb', lead: 'stabs', seed: 1111 },
+  music: { bpm: 190, root: 39, scale: 'phrygian', prog: [0, 6, 4, 1], drums: 'dnb', lead: 'stabs', seed: 1111 },
   build(b) {
     const pillars = new Set();
     // Gap of size `gap` centred on `c` between the floor and `ceil`.
