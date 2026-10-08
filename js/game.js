@@ -439,6 +439,12 @@
     }
     return got.length;
   }
+  // The artifact's owner gets every achievement.
+  function grantAllAch() {
+    let n = 0;
+    for (const a of ACH) if (!save.ach[a.id]) { save.ach[a.id] = Date.now(); n++; }
+    return n;
+  }
   function renderAch() {
     const n = ACH.filter(a => save.ach[a.id]).length;
     $('achCount').textContent = `${n}/${ACH.length}`;
@@ -558,6 +564,7 @@
     Acct.db = db; Acct.user = user; Acct.uid = uid;
     Acct.me = await user.me();
     ownerAll = await user.isOwner();
+    if (ownerAll && grantAllAch()) { persistLocal(); if (screen === 'scrAch') renderAch(); }
     if (ownerAll && screen === 'scrGarage') renderGarage();
     setStatus('busy');
     try {
@@ -602,7 +609,7 @@
   $('acFill').addEventListener('click', () => {
     if (!ownerAll) return;
     for (const d of DEFS) { const l = lvSave(d.id); l.best = 100; l.practice = 100; l.done = true; l.coins = [true, true, true]; }
-    checkAch({}); persist(); flushCloud(); A.sfx('unlock');
+    grantAllAch(); persist(); flushCloud(); A.sfx('unlock');
     toast('Bütün bölümler, paralar ve yıldızlar tamamlandı', 'good');
     renderAccount(); renderAccountChip();
   });
