@@ -789,9 +789,10 @@
   function handleEvents(ev) {
     const p = game.p, ch = charColors();
     for (const e of ev) {
-      if (e.type === 'jump') { game.jumps++; save.stats.jumps++; }
+      if (e.type === 'jump') { game.jumps++; save.stats.jumps++; if (isRainbow()) rainbowShock(p.x + p.size / 2, p.y + p.size / 2, 2); }
       else if (e.type === 'orb') {
         save.stats.orbs++; A.sfx('orb');
+        if (isRainbow()) rainbowShock(e.orb.x + 0.5, e.orb.y + 0.5);
         rings.push({ x: e.orb.x + 0.5, y: e.orb.y + 0.5, r: 0.3, life: 0.35, color: R.ORB_COLORS[e.orb.type] });
       } else if (e.type === 'pad') {
         A.sfx('pad');
@@ -845,6 +846,7 @@
     save.stats.deaths++;
     if (save.settings.shake) g.shake = 0.6;
     const ch = charColors();
+    if (isRainbow()) { for (let k = 0; k < 6; k++) burst(p.x + p.size / 2, p.y + p.size / 2, rainbowCol(k * 60), 10, 11, 1.1); rainbowShock(p.x + p.size / 2, p.y + p.size / 2, 4); }
     burst(p.x + p.size / 2, p.y + p.size / 2, ch.c1, 26, 9, 0.8);
     burst(p.x + p.size / 2, p.y + p.size / 2, ch.c2, 14, 6, 0.7);
     rings.push({ x: p.x + p.size / 2, y: p.y + p.size / 2, r: 0.4, life: 0.5, color: '#ffffff' });
@@ -1039,15 +1041,28 @@
     } else g.rot = 0;
   }
 
+  // Ultra effects for the owner's rainbow skin only.
+  const isRainbow = () => !!(R.ICONS[save.char.icon] && R.ICONS[save.char.icon].owner);
+  const rainbowCol = (k = 0) => `hsl(${(performance.now() / 1000 * 140 + k) % 360},100%,62%)`;
+  function rainbowShock(x, y, n = 3) {
+    for (let i = 0; i < n; i++) rings.push({ x, y, r: 0.2 + i * 0.15, life: 0.45 + i * 0.08, color: rainbowCol(i * 120), w: 4 });
+  }
   function updateTrail(dt) {
-    const g = game, p = g.p, ch = charColors(), kind = save.char.trail;
+    const g = game, p = g.p, ch = charColors(), kind = isRainbow() ? 3 : save.char.trail;
     const cx = p.x + p.size / 2, cy = p.y + p.size / 2;
     if (kind === 1 && Math.random() < 0.6) particles.push({ x: cx - p.size * 0.4, y: cy + (Math.random() - 0.5) * 0.4 * p.size, vx: -1.5, vy: (Math.random() - 0.5), life: 0.3, max: 0.3, size: 0.12 + Math.random() * 0.1, color: Math.random() < 0.5 ? ch.c1 : ch.c2 });
     if (kind === 4 && Math.random() < 0.5) particles.push({ x: cx - p.size * 0.3, y: cy + (Math.random() - 0.5) * 0.8 * p.size, vx: -0.5, vy: 0.5, life: 0.6, max: 0.6, size: 0.08 + Math.random() * 0.08, color: Math.random() < 0.3 ? '#ffffff' : ch.c2 });
     if (p.mode === 'ship' && Math.random() < 0.6) particles.push({ x: p.x + 0.05, y: cy - 0.1 * p.grav, vx: -2 - Math.random() * 2, vy: (Math.random() - 0.5) * 1.5, life: 0.35, max: 0.35, size: 0.16, color: ch.c2 });
     if (kind === 2 || kind === 3) {
       g.ribbon.push([cx, cy]);
-      if (g.ribbon.length > 22) g.ribbon.shift();
+      if (g.ribbon.length > (isRainbow() ? 40 : 22)) g.ribbon.shift();
+    }
+    if (isRainbow() && gstate === 'play') {
+      for (let k = 0; k < 2; k++) {
+        if (Math.random() > 0.7) continue;
+        particles.push({ x: cx - p.size * (0.2 + Math.random() * 0.4), y: cy + (Math.random() - 0.5) * p.size, vx: -1 - Math.random() * 2, vy: (Math.random() - 0.3) * 2,
+          life: 0.7, max: 0.7, size: 0.1 + Math.random() * 0.14, color: Math.random() < 0.25 ? '#ffffff' : rainbowCol(Math.random() * 360), star: true });
+      }
     }
   }
 
@@ -1130,7 +1145,7 @@
       ctx.beginPath(); g.trail.forEach((pt, i) => { const [x, y] = toS(pt); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
       ctx.strokeStyle = '#fff'; ctx.lineWidth = PX * 0.06 * g.p.size; ctx.stroke();
     }
-    const kind = save.char.trail;
+    const kind = isRainbow() ? 3 : save.char.trail;
     if ((kind === 2 || kind === 3) && g.ribbon.length > 1 && gstate !== 'dead') {
       ctx.lineCap = 'round';
       for (let i = 1; i < g.ribbon.length; i++) {
@@ -1155,6 +1170,43 @@
     ctx.fillStyle = '#ffd23f'; ctx.fillText(g.def.name, W / 2, y);
     ctx.restore();
   }
+  function drawRainbowLines(L, t, beat) {
+    const PX = view.PX, lines = [view.GY + view.camY * PX];
+    for (const seg of L.ceilSegs) if (isFinite(seg.ceil) && seg.x0 <= view.camX + W / PX && seg.x1 >= view.camX) lines.push(view.GY - (seg.ceil - view.camY) * PX);
+    const off = (t * 300) % W;
+    const g = ctx.createLinearGradient(-off, 0, W * 2 - off, 0);
+    for (let k = 0; k <= 12; k++) g.addColorStop(k / 12, `hsl(${k * 60},100%,62%)`);
+    ctx.save();
+    for (const y of lines) {
+      if (y < 0 || y > H) continue;
+      if (!save.settings.lowDetail) { ctx.globalAlpha = 0.35 + beat * 0.3; ctx.strokeStyle = g; ctx.lineWidth = 12 + beat * 10; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.globalAlpha = 1; ctx.strokeStyle = g; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function drawRainbowAura(p, t, beat) {
+    const PX = view.PX, s = p.size * PX;
+    const cx = (p.x + p.size / 2 - view.camX) * PX, cy = view.GY - (p.y + p.size / 2 - view.camY) * PX;
+    ctx.save(); ctx.translate(cx, cy);
+    if (!save.settings.lowDetail) {
+      // Rotating prismatic rays.
+      ctx.rotate(t * 1.4);
+      const rays = 12, R1 = s * (1.5 + beat * 0.5);
+      for (let k = 0; k < rays; k++) {
+        const a = k / rays * Math.PI * 2;
+        ctx.fillStyle = `hsla(${(k * 30 + t * 140) % 360},100%,65%,.22)`;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R1 * (k % 2 ? 0.8 : 1), a - 0.09, a + 0.09); ctx.closePath(); ctx.fill();
+      }
+      ctx.rotate(-t * 1.4);
+    }
+    // Halo rings in shifting colours.
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = `hsla(${(t * 140 + k * 120) % 360},100%,65%,${0.55 - k * 0.15})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, 0, s * (0.78 + k * 0.16 + Math.sin(t * 5 + k) * 0.04), 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
   function draw(t) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const low = save.settings.lowDetail;
@@ -1172,6 +1224,7 @@
       const lx = g.practice && g.checkpoints.length ? null : 3;
       if (lx !== null) ctx.fillText(label, (lx - view.camX) * view.PX, view.GY - (4.6 - view.camY) * view.PX);
       R.drawGround(ctx, view, g.hue, g.groundHue, L, low, beat);
+      if (isRainbow()) drawRainbowLines(L, t, beat);
       R.drawLevel(ctx, L, view, g.p, t, g.hue, low);
       // Checkpoints.
       for (const cp of g.checkpoints) {
@@ -1184,7 +1237,7 @@
       }
       drawTrails();
       for (const r of rings) {
-        ctx.strokeStyle = r.color || '#fff'; ctx.globalAlpha = Math.min(1, r.life * 2.5); ctx.lineWidth = 3;
+        ctx.strokeStyle = r.color || '#fff'; ctx.globalAlpha = Math.min(1, r.life * 2.5); ctx.lineWidth = r.w || 3;
         ctx.beginPath(); ctx.arc((r.x - view.camX) * view.PX, view.GY - (r.y - view.camY) * view.PX, r.r * view.PX, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.globalAlpha = 1;
@@ -1192,6 +1245,7 @@
         const gp = g.ghost, grot = gp.mode === 'ship' || gp.mode === 'wave' ? -Math.atan2(gp.vy, gp.speed) : 0;
         drawPlayer(gp, grot, t, 0.32);
       }
+      if (isRainbow() && gstate !== 'dead') drawRainbowAura(g.p, t, beat);
       if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(g.p, g.rot, t, 1, g.squash);
       R.drawParticles(ctx, view, particles);
       ctx.restore();

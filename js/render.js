@@ -734,8 +734,12 @@
     for (const q of list) {
       c.globalAlpha = Math.max(0, q.life / q.max);
       c.fillStyle = q.color;
-      const s = q.size * v.PX;
-      c.fillRect((q.x - v.camX) * v.PX - s / 2, v.GY - (q.y - v.camY) * v.PX - s / 2, s, s);
+      const s = q.size * v.PX, x = (q.x - v.camX) * v.PX, y = v.GY - (q.y - v.camY) * v.PX;
+      if (q.star) {
+        // Four-point sparkle.
+        c.beginPath(); c.moveTo(x, y - s); c.lineTo(x + s * 0.25, y - s * 0.25); c.lineTo(x + s, y); c.lineTo(x + s * 0.25, y + s * 0.25);
+        c.lineTo(x, y + s); c.lineTo(x - s * 0.25, y + s * 0.25); c.lineTo(x - s, y); c.lineTo(x - s * 0.25, y - s * 0.25); c.closePath(); c.fill();
+      } else c.fillRect(x - s / 2, y - s / 2, s, s);
     }
     c.globalAlpha = 1;
   }
