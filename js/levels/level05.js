@@ -3,97 +3,101 @@ KK.registerLevel({
   name: 'Dalga Boyu',
   difficulty: 'hard',
   stars: 5,
-  length: 378,
+  length: 380,
   hue: 185,
   music: { bpm: 160, root: 41, scale: 'minor', prog: [0, 6, 5, 4], drums: 'dnb', lead: 'stabs', seed: 505 },
   build(b) {
-    // Dalga koridoru: her sütun için zemin yüksekliği verilir, tavan = zemin + açıklık.
-    const corridor = (x0, floors, gap, top) => {
+    // Dalga koridoru: her sütun (genişlik w) için zemin yüksekliği verilir, tavan = zemin + açıklık.
+    const corridor = (x0, floors, gap, top, w = 1) => {
       for (let i = 0; i < floors.length;) {
         let j = i;
         while (j + 1 < floors.length && floors[j + 1] === floors[i]) j++;
-        const f = floors[i], w = j - i + 1;
-        if (f > 0) b.block(x0 + i, 0, w, f);
-        if (f + gap < top) b.block(x0 + i, f + gap, w, top - f - gap);
+        const f = floors[i], n = (j - i + 1) * w;
+        if (f > 0) b.block(x0 + i * w, 0, n, f);
+        if (f + gap < top) b.block(x0 + i * w, f + gap, n, top - f - gap);
         i = j + 1;
       }
     };
 
     // 1) Isınma: testereleri tanı
     b.spike(12);
-    b.saw(20, 0, 1);                                    // yerdeki testere: diken gibi üstünden atla
-    b.block(26, 0, 4, 1);
-    b.saw(31.5, 0, 1);                                  // iki basamak arasındaki çukurda testere
-    b.block(33, 0, 3, 1);
-    b.spike(36, 0, 2);
-    b.saw(43, 0, 1);
+    b.saw(18.5, 0, 1);                                  // yerdeki testere: diken gibi üstünden atla
+    b.spike(24, 0, 2);
+    b.block(29, 0, 3, 1);
+    b.saw(33, 0.4, 1);                                  // iki basamak arasındaki çukurda testere
+    b.block(34, 0, 3, 2);
+    b.spike(41, 0, 2);
+    b.saw(46.5, 0, 1.3);
 
     // 2) Dalga: basılı tut = yukarı, bırak = aşağı
-    b.color(46, 215);
-    b.mode(48, 'wave', { ceil: 9 });
-    b.block(58, 0, 2, 3);                               // yerden sütun: üstünden geç
-    b.block(64, 6, 2, 3);                               // tavandan sütun: altından geç
-    b.coin(68, 7);                                      // para 1: tavana doğru küçük bir sapma
-    b.block(70, 0, 2, 4);
-    b.block(76, 5, 2, 4);
-    b.saw(83, 1.5, 1.5);                                // testere kapıları
-    b.saw(89, 7.5, 1.5);
-    corridor(94, [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 5, 5, 4, 3], 3, 9);
-    b.mode(112, 'cube');
+    b.color(52, 215);
+    b.mode(54, 'wave', { ceil: 9 });
+    b.block(60, 0, 2, 3);                               // yerden sütun: üstünden geç
+    b.block(66, 6, 2, 3);                               // tavandan sütun: altından geç
+    b.block(72, 0, 2, 4);
+    b.block(78, 5, 2, 4);
+    b.saw(85, 5, 1.3);                                  // ortadaki testere: altından geç
+    b.coin(84, 7);                                      // para 1: testerenin üstünden dolaş
+    b.saw(91, 0.5, 1.5); b.saw(91, 8.5, 1.5);           // testere kapısı
+    corridor(96, [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1], 3, 9);
+    b.mode(120, 'cube');
 
     // 3) Küp: küreler ve testereler
-    b.color(112, 270);
-    b.spike(120, 0, 6); b.orb(121, 2);                  // zıpla + sarı küre
-    b.saw(132, 0, 1.2);
-    b.block(136, 0, 2, 2); b.saw(137, 4.6, 0.9);        // sütun: üstündeki testereye çarpmadan geç
-    b.spike(138, 0, 3);
-    // mavi küre: tavana çık, ters yürü, mavi küreyle in
-    b.block(143, 6, 33, 1);
-    b.spike(147, 0, 21);
-    b.orb(147, 2, 'blue');
-    b.spikeDown(153, 5);
-    b.spikeDown(159, 5, 2);
-    b.orb(166, 4, 'blue'); b.spikeDown(168, 5, 8);        // tavan dikenle bitiyor: küreyi kullan
+    b.color(120, 270);
+    b.spike(128, 0, 6); b.orb(130, 2);                  // zıpla + sarı küre
+    b.saw(140, 0, 1.2);                                 // büyük yer testeresi
+    b.spike(146, 0, 5); b.orb(148, 2, 'pink');          // pembe küre: alçak testerenin altından
+    b.saw(150, 5.3, 1);
+    // mavi küre: tavan bloğunun altında ters yürüyüş
+    b.block(160, 6, 24, 1);
+    b.spike(158, 0, 19);
+    b.orb(158, 2, 'blue');
+    b.saw(166, 6, 1);                                   // tavana gömülü testere: aşağı zıpla
+    b.spikeDown(172, 5);
+    b.orb(176, 5, 'blue');                              // yoldaki küre: yere dön
+    b.spikeDown(178, 5, 6);                             // atlanamaz: küre şart
 
-    // 4) Mini dalga: daha dik! önce yumuşak giriş, sonra sık zikzak ve dar koridor
-    b.color(176, 315);
-    b.size(178, 'mini');
-    b.mode(180, 'wave', { ceil: 8 });
-    b.block(187, 0, 1, 3);
-    b.block(192, 4, 1, 4);
-    b.block(196, 0, 1, 4); b.block(199, 3, 1, 5); b.block(202, 0, 1, 4); b.block(205, 3, 1, 5);
-    corridor(209, [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 3], 2, 8);
-    // yol ayrımı: alt yol kolay; üst yolda diken sırası ve para 2
-    b.block(224, 3, 12, 2);
-    b.spike(227, 0, 2); b.spikeDown(231, 2, 2);
-    b.spike(225, 5, 3); b.spikeDown(228, 7, 3); b.spike(231, 5, 3); b.spikeDown(234, 7, 2);
-    b.coin(229, 5);
-    b.saw(239, 1, 1); b.saw(242, 7, 1);
-    b.size(246, 'normal');
-    b.mode(246, 'cube');
+    // 4) Mini dalga: daha dik! sık zikzak, dar koridor, yol ayrımı
+    b.color(184, 315);
+    b.size(186, 'mini');
+    b.mode(188, 'wave', { ceil: 8 });
+    b.block(195, 0, 1, 4);
+    b.block(198, 3, 1, 5);
+    b.block(201, 0, 1, 5);
+    b.block(204, 3, 1, 5);
+    corridor(208, [0, 1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 5, 5, 4, 3, 2, 1, 1], 2, 8);
+    // alt yol: testere ve dikenler arasında yumuşak dalga; üst yol: dar testere slalomu ve para 2
+    b.block(231, 3.5, 15, 2);
+    b.saw(234, 0, 1); b.spikeDown(237, 2.5); b.saw(240, 0, 1); b.spikeDown(243, 2.5);
+    b.saw(235, 8, 1); b.saw(238, 5.5, 1); b.saw(241.5, 8, 1); b.saw(244, 5.5, 1);
+    b.coin(239, 6.5);
 
     // 5) Hızlı küp
-    b.color(246, 350);
-    b.speed(248, 'fast');
-    b.spike(256, 0, 2);
-    b.saw(263, 0, 1.2);
-    b.block(268, 0, 3, 1); b.block(271, 0, 3, 2); b.spike(274, 0, 3);
-    b.spike(282, 0, 12); b.orb(284, 2); b.orb(289, 3);
-    b.pad(299, 0, 'pink'); b.spike(300, 0, 3);
+    b.color(250, 350);
+    b.size(250, 'normal');
+    b.mode(250, 'cube');
+    b.speed(252, 'fast');
+    b.spike(260, 0, 2);
+    b.saw(265.5, 0, 1.2);
+    b.block(270, 0, 3, 1); b.block(273, 0, 3, 2); b.spike(276, 0, 3);
+    b.pad(285); b.spike(286, 0, 4);                     // zıplatıcı: sütunun üstüne
+    b.block(290, 0, 3, 3);
+    b.spike(293, 0, 8); b.orb(294, 5);                  // sütundan atla + sarı küre
 
     // 6) Hızlı dalga: final
-    b.color(304, 30);
-    b.mode(306, 'wave', { ceil: 9 });
-    b.block(314, 0, 2, 4); b.saw(315, 4, 1);            // testereli sütunlar
-    b.block(320, 5, 2, 4); b.saw(321, 5, 1);
-    b.block(326, 0, 2, 4); b.saw(327, 4, 1);
-    corridor(332, [2, 3, 4, 5, 5, 4, 3, 2, 1, 1], 2.5, 9);
-    corridor(342, [2, 3, 4, 4, 3, 2, 1, 1], 2, 9);      // koridor daralıyor
-    // son ayrım: alt yol güvenli, üst yolda testereler ve para 3
-    b.block(354, 3.5, 10, 1.5);
-    b.spike(357, 0); b.spikeDown(360, 2.5);
-    b.saw(357, 7.5, 0.9); b.coin(359, 6); b.saw(361, 5.5, 0.9);
-    b.mode(366, 'cube');
-    b.color(366, 60);
+    b.color(308, 30);
+    b.mode(310, 'wave', { ceil: 9 });
+    b.block(318, 0, 2, 4); b.saw(319, 4, 1);            // testereli sütunlar
+    b.block(324, 5, 2, 4); b.saw(325, 5, 1);
+    b.block(330, 0, 2, 4); b.saw(331, 4, 1);
+    // yarım basamaklı zikzak koridor, sonra sık zikzak (hızlı tıklama)
+    corridor(336, [1, 1.5, 2, 2.5, 3, 3.5, 4, 4, 3.5, 3, 2.5, 2, 1.5, 1, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4], 2.5, 9, 0.5);
+    corridor(347, [3.5, 3, 3, 3.5, 4, 4, 3.5, 3, 3, 3.5, 4, 4, 3.5, 3, 3, 3.5, 4, 4.5, 5, 5], 2.25, 9, 0.5);
+    // son ayrım: üst yolda testere slalomu; alttaki dar tünelde para 3 (hemen dalış gerekir)
+    b.block(361, 3, 10, 1.5);
+    b.saw(363, 8, 1.5); b.saw(365.5, 5, 1.5); b.saw(368, 8, 1.5); b.saw(370.5, 5, 1.5);
+    b.spike(364); b.spikeDown(367, 2); b.coin(365, 1);
+    b.mode(374, 'cube');                                // bitiş
+    b.color(374, 60);
   },
 });
