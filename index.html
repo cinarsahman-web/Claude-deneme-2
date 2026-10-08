@@ -230,6 +230,49 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
   .lv-face { width: 52px; height: 52px; }
   .btn { font-size: 16px; padding: 10px 18px; }
 }
+
+/* Account */
+.acct-chip {
+  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 16px;
+  display: flex; align-items: center; gap: 8px; max-width: calc(100% - 32px);
+  border: 2px solid rgba(255,255,255,.7); background: rgba(7,10,34,.6); border-radius: 999px;
+  padding: 4px 14px 4px 4px; cursor: pointer; font-weight: 600;
+}
+.acct-chip img { width: 30px; height: 30px; border-radius: 50%; flex: none; background: var(--panel-2); }
+.acct-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; font-style: normal; }
+.acct-chip i.on { background: var(--leaf); box-shadow: 0 0 8px var(--leaf); }
+.profile { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+.profile img { width: 64px; height: 64px; border-radius: 50%; border: 3px solid #fff; background: var(--panel-2); }
+.profile h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 22px; color: #fff; overflow-wrap: anywhere; }
+.profile p { margin: 2px 0 0; color: var(--dim); font-size: 13px; }
+.nick-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.nick-row input {
+  flex: 1 1 160px; min-width: 0; font: inherit; font-size: 16px; color: #fff; background: rgba(0,0,0,.35);
+  border: 2px solid rgba(255,255,255,.4); border-radius: 12px; padding: 9px 12px;
+}
+.nick-row input:focus-visible { outline: 3px solid var(--glow); outline-offset: 1px; }
+.sync { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+.sync i { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
+.sync i.ok { background: var(--leaf); } .sync i.busy { background: var(--volt); } .sync i.bad { background: var(--hot); }
+.board { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.board li {
+  display: grid; grid-template-columns: 2.2em 40px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  background: rgba(0,0,0,.3); border: 2px solid rgba(255,255,255,.14); border-radius: 12px; padding: 6px 12px;
+}
+.board li.me { border-color: var(--volt); }
+.board .rank { font-family: var(--display); font-size: 16px; color: var(--dim); text-align: center; font-variant-numeric: tabular-nums; }
+.board li:nth-child(1) .rank { color: var(--volt); } .board li:nth-child(2) .rank { color: #dfe6ff; } .board li:nth-child(3) .rank { color: #ff9d5c; }
+.board canvas { width: 40px; height: 40px; }
+.board .who { min-width: 0; display: grid; }
+.board .who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+.board .who small { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 12px; min-width: 0; }
+.board .who small img { width: 16px; height: 16px; border-radius: 50%; flex: none; }
+.board .who small span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .score { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.board .score b { font-family: var(--display); font-weight: 400; color: var(--volt); font-size: 16px; }
+.board .score span { color: var(--coin); font-size: 13px; margin-left: 6px; }
+.section-title { margin: 6px 0 0; font-family: var(--display); font-weight: 400; font-size: 18px; color: var(--glow); }
 @media (max-height: 520px) {
   .main-wrap { gap: 12px; }
   .logo { font-size: clamp(34px, 14vh, 64px); }
@@ -267,6 +310,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
 
 <!-- Main menu -->
 <section class="screen" id="scrMain">
+  <button class="acct-chip" id="mAccount" aria-label="Hesap"><img id="mAvatar" alt=""><span id="mNick">Misafir</span><i id="mSyncDot"></i></button>
   <div class="main-wrap">
     <h1 class="logo">Kare Koşusu<small id="mCount">11 bölüm · 7 mod</small></h1>
     <button class="play-big" id="mPlay" aria-label="Bölümleri seç ve oyna"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2 18 10 4 18Z" fill="#fff" stroke="#14101f" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
@@ -339,6 +383,25 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
 <section class="screen dense" id="scrStats" hidden>
   <header class="topbar"><button class="back" id="stBack">← Menü</button><h2>İstatistik</h2></header>
   <div class="stats-grid" id="statsGrid"></div>
+</section>
+
+<!-- Account -->
+<section class="screen dense" id="scrAccount" hidden>
+  <header class="topbar"><button class="back" id="acBack">← Menü</button><h2>Hesap</h2></header>
+  <div class="panel">
+    <div class="set-row" style="display:grid;gap:14px">
+      <div class="profile"><img id="acAvatar" alt=""><div><h3 id="acNick">Misafir</h3><p id="acWho">claude.ai hesabı bağlı değil</p></div></div>
+      <form class="nick-row" id="acForm" hidden>
+        <input id="acNickInput" maxlength="16" autocomplete="off" placeholder="Oyuncu adın" aria-label="Oyuncu adı">
+        <button class="btn green small" id="acSave" type="submit">Adı kaydet</button>
+      </form>
+      <div class="sync" role="status"><i id="acDot"></i><span id="acStatus">İlerleme bu cihazda saklanıyor</span></div>
+      <p class="note" id="acOffline">Hesap, oyun claude.ai'de oturum açıkken açıldığında çalışır. Hesap varken ilerlemen buluta kaydedilir, başka cihazda kaldığın yerden devam edersin ve sıralamaya girersin. Şu an ilerlemen yalnızca bu cihazda.</p>
+    </div>
+    <h3 class="section-title" id="acBoardTitle" hidden>Sıralama</h3>
+    <ol class="board" id="acBoard" hidden></ol>
+    <p class="note" id="acBoardEmpty" hidden>Henüz kimse sıralamada yok. Bir bölüm bitir, ilk sen gir.</p>
+  </div>
 </section>
 
 <!-- Pause -->

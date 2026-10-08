@@ -20,6 +20,8 @@
       stats: { attempts: 0, practiceAttempts: 0, jumps: 0, deaths: 0, orbs: 0, playTime: 0 },
       settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion },
       char: { icon: 0, c1: 0, c2: 1, trail: 1 },
+      profile: { nick: '' },
+      updatedAt: 0, resetAt: 0,
     };
   }
   function loadSave() {
@@ -42,11 +44,14 @@
     s.stats = merge(d.stats, s.stats);
     s.settings = merge(d.settings, s.settings);
     s.char = merge(d.char, s.char);
+    s.profile = merge(d.profile, s.profile);
+    for (const k of ['updatedAt', 'resetAt']) if (typeof s[k] !== 'number') s[k] = 0;
     if (!s.levels || typeof s.levels !== 'object') s.levels = {};
     return s;
   }
   let save = loadSave();
-  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
+  function persistLocal() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
+  function persist() { save.updatedAt = Date.now(); persistLocal(); cloudSchedule(); }
   function lvSave(id) {
     let l = save.levels[id];
     if (!l || typeof l !== 'object' || Array.isArray(l)) l = save.levels[id] = {};
@@ -122,10 +127,11 @@
   }
 
   // ---------- Screens ----------
-  const SCREENS = ['scrMain', 'scrLevels', 'scrGarage', 'scrSettings', 'scrStats'];
+  const SCREENS = ['scrMain', 'scrLevels', 'scrGarage', 'scrSettings', 'scrStats', 'scrAccount'];
   let screen = 'scrMain';
   function showScreen(id) {
     for (const s of SCREENS) $(s).hidden = s !== id;
+    if (screen === 'scrAccount' && id !== 'scrAccount') stopBoard();
     screen = id;
     $('hud').hidden = true; $('practicePad').hidden = true; $('practiceTag').hidden = true;
     $('scrPause').hidden = true; $('scrComplete').hidden = true;
@@ -134,6 +140,7 @@
     if (id === 'scrGarage') renderGarage();
     if (id === 'scrSettings') renderSettings();
     if (id === 'scrStats') renderStats();
+    if (id === 'scrAccount') { renderAccount(); startBoard(); }
     const first = id === 'scrLevels' ? $('lvPlay') : $(id).querySelector('button');
     if (first) first.focus({ preventScroll: true });
   }
@@ -151,12 +158,14 @@
     $('mCount').textContent = `${DEFS.length} bölüm · 7 mod`;
     $('mStars').textContent = `★ ${totalStars()}/${maxStars()}`;
     $('mCoins').textContent = `● ${totalCoins()}/${maxCoins()}`;
+    renderAccountChip();
   }
   $('mPlay').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrLevels'); });
   $('mGarage').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrGarage'); });
   $('mSettings').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrSettings'); });
   $('mStats').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrStats'); });
-  for (const id of ['lvBack', 'gBack', 'sBack', 'stBack']) $(id).addEventListener('click', () => { click(); showScreen('scrMain'); });
+  $('mAccount').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrAccount'); });
+  for (const id of ['lvBack', 'gBack', 'sBack', 'stBack', 'acBack']) $(id).addEventListener('click', () => { click(); showScreen('scrMain'); });
 
   // Level select
   let lvIndex = 0;
@@ -341,7 +350,8 @@
   $('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; $('resetBtn').focus(); });
   $('resetYes').addEventListener('click', () => {
     const keepSettings = save.settings;
-    save = defaults(); save.settings = keepSettings; persist();
+    const keepProfile = save.profile;
+    save = defaults(); save.settings = keepSettings; save.profile = keepProfile; save.resetAt = Date.now(); persist();
     $('resetConfirm').hidden = true; toast('İlerleme sıfırlandı'); renderSettings();
   });
 
@@ -361,6 +371,195 @@
     ];
     $('statsGrid').innerHTML = rows.map(([k, v]) => `<div class="stat"><span>${k}</span><strong>${v}</strong></div>`).join('') +
       DEFS.map(d => { const l = lvSave(d.id); return `<div class="stat"><span>${esc(d.name)}</span><strong>${l.best}%</strong><span>Pratik ${l.practice}% · ${l.coins.filter(Boolean).length}/3 para · ${l.attempts} deneme</span></div>`; }).join('');
+  }
+
+
+  // ---------- Account: claude.ai identity, cloud save and leaderboard ----------
+  // The account is the viewer's claude.ai sign-in (no passwords). Progress lives in the viewer's
+  // private db subtree; a public summary (nickname, stars, coins, icon) feeds the leaderboard.
+  const Acct = { db: null, user: null, uid: null, me: null, status: 'local', note: '', writing: false, dirty: false,
+    timer: null, lastSave: '', lastCard: '', board: [], unsubBoard: null, readonly: false };
+  const NICK_RE = /^[\p{L}\p{N} _.\-]{2,16}$/u;
+  const cleanNick = n => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 16);
+  const saveRef = () => Acct.db.doc('data/users/' + Acct.uid + '/save');
+  const cardRef = () => Acct.db.doc('players/' + Acct.uid);
+  function setStatus(status, note) { Acct.status = status; Acct.note = note || ''; renderAccountChip(); if (screen === 'scrAccount') renderAccount(); }
+
+  function mergeCloud(c) {
+    if (!c || typeof c !== 'object') return;
+    const num = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+    const cUpd = num(c.updatedAt), cReset = num(c.resetAt);
+    if (cReset > save.updatedAt) {
+      // Progress was reset on another device after this device last played: take the cloud copy.
+      save.levels = {}; save.stats = defaults().stats;
+    }
+    if (!(save.resetAt > cUpd)) {
+      const cl = c.levels && typeof c.levels === 'object' ? c.levels : {};
+      for (const id of Object.keys(cl)) {
+        const r = cl[id];
+        if (!r || typeof r !== 'object' || !DEFS.some(d => String(d.id) === id)) continue;
+        const l = lvSave(id);
+        l.best = Math.max(l.best, Math.min(100, num(r.best)));
+        l.practice = Math.max(l.practice, Math.min(100, num(r.practice)));
+        l.attempts = Math.max(l.attempts, num(r.attempts));
+        l.jumps = Math.max(l.jumps, num(r.jumps));
+        l.done = l.done || !!r.done;
+        if (Array.isArray(r.coins)) l.coins = l.coins.map((v, i) => v || !!r.coins[i]);
+      }
+      if (c.stats && typeof c.stats === 'object') for (const k of Object.keys(save.stats)) save.stats[k] = Math.max(save.stats[k], num(c.stats[k]));
+    }
+    // Look and settings follow whichever device changed them last.
+    if (cUpd > save.updatedAt) {
+      for (const k of ['char', 'settings', 'profile']) {
+        const src = c[k];
+        if (src && typeof src === 'object') for (const f of Object.keys(save[k])) if (typeof src[f] === typeof save[k][f]) save[k][f] = src[f];
+      }
+    }
+    save.updatedAt = Math.max(save.updatedAt, cUpd);
+    save.resetAt = Math.max(save.resetAt, cReset);
+    if (save.char.icon >= R.ICONS.length) save.char.icon = 0;
+    if (save.char.c1 >= R.COLORS.length) save.char.c1 = 0;
+    if (save.char.c2 >= R.COLORS.length) save.char.c2 = 1;
+  }
+
+  function playerCard() {
+    return {
+      nick: cleanNick(save.profile.nick) || 'Oyuncu',
+      stars: totalStars(), coins: totalCoins(), done: DEFS.filter(d => lvSave(d.id).done).length,
+      icon: save.char.icon, c1: save.char.c1, c2: save.char.c2,
+    };
+  }
+
+  async function pushCloud() {
+    if (!Acct.db || Acct.readonly) return;
+    if (Acct.writing) { Acct.dirty = true; return; }
+    Acct.writing = true;
+    try {
+      const body = JSON.stringify(save);
+      if (body !== Acct.lastSave) {
+        setStatus('busy');
+        await saveRef().set({ save: JSON.parse(body) });
+        Acct.lastSave = body;
+      }
+      const card = playerCard(), cardStr = JSON.stringify(card);
+      if (cardStr !== Acct.lastCard) {
+        await cardRef().set(Object.assign({ at: Date.now() }, card));
+        Acct.lastCard = cardStr;
+      }
+      setStatus('ok');
+    } catch (e) {
+      if (e && e.code === 'invalid_argument') { Acct.readonly = true; setStatus('bad', 'Bu oyunda yazma iznin yok; ilerlemen yalnızca bu cihazda saklanıyor.'); }
+      else setStatus('bad', 'Buluta kaydedilemedi. Biraz sonra yeniden denenecek.');
+      if (!Acct.readonly) { clearTimeout(Acct.timer); Acct.timer = setTimeout(pushCloud, 15000); }
+    } finally {
+      Acct.writing = false;
+      if (Acct.dirty) { Acct.dirty = false; cloudSchedule(); }
+    }
+  }
+  function flushCloud() { if (Acct.db && !Acct.readonly) { clearTimeout(Acct.timer); pushCloud(); } }
+  function cloudSchedule() {
+    if (!Acct.db || Acct.readonly) return;
+    clearTimeout(Acct.timer);
+    // While playing, deaths save every few seconds; batch them so the cloud sees one write per pause.
+    Acct.timer = setTimeout(pushCloud, game && gstate !== 'paused' && gstate !== 'complete' ? 10000 : 1500);
+  }
+
+  async function initAccount() {
+    const use = window.claude && typeof window.claude.use === 'function' ? window.claude.use : null;
+    if (!use) { setStatus('local'); return; }
+    let db = null, user = null;
+    try { [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]); } catch (e) { /* unavailable */ }
+    const uid = user ? await user.id() : null;
+    if (!db || !user || !uid) { setStatus('local'); return; }
+    Acct.db = db; Acct.user = user; Acct.uid = uid;
+    Acct.me = await user.me();
+    setStatus('busy');
+    try {
+      const snap = await saveRef().get();
+      if (snap.exists) {
+        const before = JSON.stringify(save.levels);
+        mergeCloud((snap.data() || {}).save);
+        if (JSON.stringify(save.levels) !== before) toast('Bulut kaydı yüklendi', 'good');
+        Acct.lastSave = JSON.stringify(save);
+      }
+      if (!cleanNick(save.profile.nick)) save.profile.nick = cleanNick((Acct.me.name || '').split(' ')[0]) || 'Oyuncu';
+      persistLocal();
+      A.setVolumes(save.settings.music / 100, save.settings.sfx / 100);
+      if (!game) { if (screen === 'scrMain') renderMain(); else if (screen === 'scrLevels') renderLevels(); }
+      await pushCloud();
+    } catch (e) {
+      setStatus('bad', 'Bulut kaydı okunamadı. İlerlemen bu cihazda saklanıyor.');
+    }
+  }
+
+  function renderAccountChip() {
+    const on = !!Acct.db;
+    $('mNick').textContent = on ? (cleanNick(save.profile.nick) || 'Oyuncu') : 'Misafir';
+    $('mAvatar').src = Acct.me ? Acct.me.avatarUrl : 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><rect width="30" height="30" fill="#182060"/><circle cx="15" cy="12" r="5" fill="#8d98d6"/><path d="M6 26c1-6 17-6 18 0" fill="#8d98d6"/></svg>');
+    $('mSyncDot').className = on && Acct.status === 'ok' ? 'on' : '';
+  }
+
+  function renderAccount() {
+    const on = !!Acct.db;
+    $('acAvatar').src = $('mAvatar').src;
+    $('acNick').textContent = on ? (cleanNick(save.profile.nick) || 'Oyuncu') : 'Misafir';
+    $('acWho').textContent = on ? (Acct.me && Acct.me.name ? `claude.ai: ${Acct.me.name}` : 'claude.ai hesabı') : 'claude.ai hesabı bağlı değil';
+    $('acForm').hidden = !on || Acct.readonly;
+    $('acOffline').hidden = on;
+    if (on && document.activeElement !== $('acNickInput')) $('acNickInput').value = cleanNick(save.profile.nick);
+    const dot = { ok: 'ok', busy: 'busy', bad: 'bad' }[Acct.status] || '';
+    $('acDot').className = dot;
+    $('acStatus').textContent = Acct.note || ({ ok: 'Bulutla eşitlendi', busy: 'Eşitleniyor…', local: 'İlerleme bu cihazda saklanıyor' }[Acct.status] || 'İlerleme bu cihazda saklanıyor');
+    $('acBoardTitle').hidden = !on; $('acBoard').hidden = !on || !Acct.board.length; $('acBoardEmpty').hidden = !on || Acct.board.length > 0;
+  }
+  $('acForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const n = cleanNick($('acNickInput').value);
+    if (!NICK_RE.test(n)) { toast('Ad 2-16 harf, rakam, boşluk, nokta, alt çizgi ya da tire olmalı'); return; }
+    save.profile.nick = n; persist(); click();
+    clearTimeout(Acct.timer); pushCloud();
+    toast('Ad kaydedildi', 'good'); renderAccount(); renderAccountChip();
+  });
+
+  function startBoard() {
+    if (!Acct.db || Acct.unsubBoard) return;
+    Acct.unsubBoard = Acct.db.collection('players').orderBy('stars', 'desc').limit(100).onSnapshot(snap => {
+      Acct.board = snap.docs.map(d => ({ id: d.id, data: d.data() || {} }));
+      renderBoard();
+    }, () => { Acct.unsubBoard = null; });
+  }
+  function stopBoard() { if (Acct.unsubBoard) { Acct.unsubBoard(); Acct.unsubBoard = null; } }
+
+  async function renderBoard() {
+    const n = v => (typeof v === 'number' && isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
+    const rows = Acct.board.map(r => ({
+      id: r.id, nick: cleanNick(r.data.nick) || 'Oyuncu', stars: Math.min(n(r.data.stars), maxStars()), coins: Math.min(n(r.data.coins), maxCoins()),
+      done: n(r.data.done), icon: n(r.data.icon) % R.ICONS.length, c1: n(r.data.c1) % R.COLORS.length, c2: n(r.data.c2) % R.COLORS.length,
+    })).sort((a, b) => b.stars - a.stars || b.coins - a.coins || b.done - a.done);
+    const ps = Acct.user ? await Acct.user.profiles(rows.map(r => r.id)) : {};
+    const list = $('acBoard');
+    list.textContent = '';
+    rows.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.id === Acct.uid) li.className = 'me';
+      const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = i + 1;
+      const c = document.createElement('canvas'); c.width = 80; c.height = 80;
+      const g = c.getContext('2d'); g.translate(40, 40); R.drawIcon(g, r.icon, 60, R.COLORS[r.c1], R.COLORS[r.c2]);
+      const who = document.createElement('div'); who.className = 'who';
+      const nm = document.createElement('b'); nm.textContent = r.nick + (r.id === Acct.uid ? ' (sen)' : '');
+      const sm = document.createElement('small');
+      const p = ps[r.id];
+      if (p) { const im = document.createElement('img'); im.src = p.avatarUrl; im.alt = ''; sm.appendChild(im); }
+      const sp = document.createElement('span'); sp.textContent = (p && p.name) ? p.name : `${r.done} bölüm`; sm.appendChild(sp);
+      who.append(nm, sm);
+      const sc = document.createElement('div'); sc.className = 'score';
+      const st = document.createElement('b'); st.textContent = r.stars + '★';
+      const co = document.createElement('span'); co.textContent = r.coins + ' para';
+      sc.append(st, co);
+      li.append(rank, c, who, sc);
+      list.appendChild(li);
+    });
+    if (screen === 'scrAccount') renderAccount();
   }
 
   // ---------- Input ----------
@@ -398,9 +597,9 @@
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
     if (game && (gstate === 'play' || gstate === 'dead')) pauseGame();
-    persist();
+    persist(); flushCloud();
   });
-  window.addEventListener('pagehide', persist);
+  window.addEventListener('pagehide', () => { persist(); flushCloud(); });
 
   // ---------- Game ----------
   let game = null, gstate = 'idle', acc = 0, auto = null;
@@ -859,6 +1058,7 @@
   // ---------- Boot ----------
   resize();
   showScreen('scrMain');
+  initAccount();
   // Expose a small handle for automated tests.
   window.__kk = {
     get state() { return gstate; }, get screen() { return screen; }, get game() { return game; }, get save() { return save; },
