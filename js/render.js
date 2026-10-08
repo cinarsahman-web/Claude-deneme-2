@@ -55,6 +55,21 @@
     { name: 'Kurukafa', draw(c, s, a, b) { frame(c, s, a); dot(c, 0, -0.06, 0.3, b, s); box(c, -0.18, 0.12, 0.36, 0.2, b, s); dot(c, -0.12, -0.06, 0.09, DARK, s); dot(c, 0.12, -0.06, 0.09, DARK, s); box(c, -0.06, 0.18, 0.04, 0.12, DARK, s); box(c, 0.04, 0.18, 0.04, 0.12, DARK, s); } },
     { name: 'Taç', draw(c, s, a, b) { frame(c, s, a); poly(c, [[-0.34, 0.24], [-0.34, -0.22], [-0.17, 0], [0, -0.3], [0.17, 0], [0.34, -0.22], [0.34, 0.24]], b, s); dot(c, 0, 0.1, 0.06, a, s); } },
     { name: 'Uzaylı', draw(c, s, a, b) { frame(c, s, a); c.save(); c.rotate(0.35); c.beginPath(); c.ellipse(-0.17 * s, 0, 0.15 * s, 0.09 * s, 0, 0, TAU); c.fillStyle = b; c.fill(); c.restore(); c.save(); c.rotate(-0.35); c.beginPath(); c.ellipse(0.17 * s, 0, 0.15 * s, 0.09 * s, 0, 0, TAU); c.fillStyle = b; c.fill(); c.restore(); box(c, -0.05, 0.22, 0.1, 0.05, DARK, s); } },
+    // Owner-only skin: the colours flow through the rainbow over time, whatever colours are picked.
+    { name: 'Gökkuşağı', owner: true, draw(c, s) {
+      const t = performance.now() / 1000;
+      c.save(); c.beginPath(); c.rect(-s / 2, -s / 2, s, s); c.clip();
+      for (let i = -4; i <= 4; i++) {
+        c.fillStyle = `hsl(${(t * 140 + i * 40) % 360},95%,60%)`;
+        c.beginPath(); c.moveTo((i * 0.22 - 0.6) * s, 0.6 * s); c.lineTo((i * 0.22 - 0.38) * s, 0.6 * s);
+        c.lineTo((i * 0.22 + 0.6) * s, -0.6 * s); c.lineTo((i * 0.22 + 0.38) * s, -0.6 * s); c.closePath(); c.fill();
+      }
+      c.restore();
+      c.lineWidth = Math.max(1.5, s * 0.07); c.strokeStyle = DARK; c.strokeRect(-s / 2, -s / 2, s, s);
+      box(c, -0.3, -0.3, 0.6, 0.6, '#ffffff', s);
+      box(c, -0.2, -0.16, 0.12, 0.14, DARK, s); box(c, 0.08, -0.16, 0.12, 0.14, DARK, s);
+      c.beginPath(); c.arc(0, 0.06 * s, 0.14 * s, 0.15 * Math.PI, 0.85 * Math.PI); c.lineWidth = s * 0.06; c.strokeStyle = `hsl(${(t * 140) % 360},90%,45%)`; c.stroke();
+    } },
   ];
 
   function drawIcon(c, idx, s, c1, c2) { (ICONS[idx] || ICONS[0]).draw(c, s, c1, c2); }

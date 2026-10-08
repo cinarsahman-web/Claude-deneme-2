@@ -70,7 +70,7 @@
 
   // ---------- Unlocks ----------
   const ICON_REQ = [null, null, { stars: 1 }, { stars: 3 }, { stars: 6 }, { stars: 10 }, { stars: 15 }, { stars: 21 }, { stars: 28 },
-    { stars: 36 }, { stars: 45 }, { stars: 55 }, { stars: 67 }, { coins: 3 }, { coins: 6 }, { coins: 10 }, { coins: 16 }, { coins: 24 }];
+    { stars: 36 }, { stars: 45 }, { stars: 55 }, { stars: 67 }, { coins: 3 }, { coins: 6 }, { coins: 10 }, { coins: 16 }, { coins: 24 }, { owner: true }];
   const COLOR_REQ = [null, null, null, null, null, null, { stars: 3 }, { stars: 8 }, { stars: 14 }, { stars: 22 }, { coins: 2 }, { coins: 5 },
     { coins: 9 }, { coins: 14 }, { stars: 40 }, { coins: 20 }];
   const TRAILS = [
@@ -82,8 +82,8 @@
   const reqCoins = req => Math.min(req.coins, maxCoins());
   // The artifact's owner has every character item unlocked.
   let ownerAll = false;
-  const reqMet = req => !req || ownerAll || (req.stars ? totalStars() >= reqStars(req) : totalCoins() >= reqCoins(req));
-  const reqText = req => req.stars ? `${reqStars(req)}★` : `${reqCoins(req)} para`;
+  const reqMet = req => !req || ownerAll || (!req.owner && (req.stars ? totalStars() >= reqStars(req) : totalCoins() >= reqCoins(req)));
+  const reqText = req => req.owner ? 'Sahibe özel' : req.stars ? `${reqStars(req)}★` : `${reqCoins(req)} para`;
   function unlockedSet() {
     const s = new Set();
     ICON_REQ.forEach((r, i) => reqMet(r) && s.add('icon' + i));
@@ -96,7 +96,15 @@
     if (key.startsWith('color')) return 'Yeni renk açıldı';
     return `Yeni iz: ${TRAILS[+key.slice(5)].name}`;
   }
-  const charColors = () => ({ icon: save.char.icon, c1: R.COLORS[save.char.c1] || R.COLORS[0], c2: R.COLORS[save.char.c2] || R.COLORS[1] });
+  const charColors = () => {
+    const icon = save.char.icon;
+    if (R.ICONS[icon] && R.ICONS[icon].owner) {
+      // The rainbow skin paints every form (ball, wave, trails) in flowing colours too.
+      const h = (performance.now() / 1000 * 140) % 360;
+      return { icon, c1: `hsl(${h},95%,60%)`, c2: `hsl(${(h + 150) % 360},95%,60%)` };
+    }
+    return { icon, c1: R.COLORS[save.char.c1] || R.COLORS[0], c2: R.COLORS[save.char.c2] || R.COLORS[1] };
+  };
 
   // ---------- Canvas ----------
   let W = 0, H = 0, dpr = 1, view = R.makeView(800, 600);
@@ -252,7 +260,7 @@
     for (const b of document.querySelectorAll('.tabs [role=tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === gTab));
     const grid = $('gGrid');
     grid.innerHTML = '';
-    const ch = charColors();
+    const ch = { icon: save.char.icon, c1: R.COLORS[save.char.c1] || R.COLORS[0], c2: R.COLORS[save.char.c2] || R.COLORS[1] };
     const items = gTab === 'icon' ? R.ICONS.map((ic, i) => ({ i, name: ic.name, req: ICON_REQ[i], sel: save.char.icon === i }))
       : gTab === 'trail' ? TRAILS.map((t, i) => ({ i, name: t.name, req: t.req, sel: save.char.trail === i }))
       : R.COLORS.map((c, i) => ({ i, name: `Renk ${i + 1}`, req: COLOR_REQ[i], sel: save.char[gTab] === i, color: c }));
