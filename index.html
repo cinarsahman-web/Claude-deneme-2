@@ -276,6 +276,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
 .fps { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); z-index: 40; pointer-events: none;
   font: 600 12px var(--body); font-variant-numeric: tabular-nums; color: var(--leaf); background: rgba(0,0,0,.45); border-radius: 6px; padding: 2px 7px; }
 .sel { font: inherit; font-weight: 600; color: #fff; background: rgba(0,0,0,.4); border: 2px solid rgba(255,255,255,.5); border-radius: 10px; padding: 7px 10px; }
+.endless-best { font-family: var(--body); font-weight: 600; font-size: 12px; background: rgba(0,0,0,.25); border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
 /* Achievements */
 .ach-grid { width: 100%; max-width: 760px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
 .ach { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: center; background: rgba(0,0,0,.3); border: 2px solid rgba(255,255,255,.15); border-radius: 14px; padding: 10px 12px; }
@@ -328,6 +329,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
   <div class="main-wrap">
     <h1 class="logo">Kare Koşusu<small id="mCount">11 bölüm · 7 mod</small></h1>
     <button class="play-big" id="mPlay" aria-label="Bölümleri seç ve oyna"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2 18 10 4 18Z" fill="#fff" stroke="#14101f" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+    <button class="btn pink" id="mEndless">Sonsuz Koşu <span class="endless-best" id="mEndlessBest">Yeni</span></button>
     <div class="row">
       <button class="btn blue small" id="mGarage">Karakter</button>
       <button class="btn pink small" id="mSettings">Ayarlar</button>
@@ -378,7 +380,6 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
     <div class="set-row"><label for="setFpsCap">Kare hızı<small>"Ekran hızı" 144 ve 240 Hz ekranlarda da tam akıcılık verir</small></label>
       <select id="setFpsCap" class="sel"><option value="0">Ekran hızı</option><option value="240">240 FPS</option><option value="144">144 FPS</option><option value="120">120 FPS</option><option value="60">60 FPS</option><option value="30">30 FPS</option></select></div>
     <div class="set-row"><label for="setFps">FPS göster<small>Sağ altta anlık kare hızını gösterir</small></label><input type="checkbox" class="switch" id="setFps"></div>
-    <div class="set-row"><label for="setGhost">Hayalet<small>Bölümdeki en iyi denemen yarı saydam bir kopya olarak seninle koşar</small></label><input type="checkbox" class="switch" id="setGhost"></div>
     <div class="set-row"><label for="setShake">Ekran sarsıntısı<small>Ölünce ekran sallanır</small></label><input type="checkbox" class="switch" id="setShake"></div>
     <div class="set-row" style="display:grid">
       <ul class="keys">
@@ -493,6 +494,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: pointer; }
 <script src="js/levels/level09.js"></script>
 <script src="js/levels/level10.js"></script>
 <script src="js/levels/level11.js"></script>
+<script src="js/endless.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/render.js"></script>
 <script src="js/game.js"></script>

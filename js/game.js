@@ -18,10 +18,10 @@
     return {
       v: 2, levels: {},
       stats: { attempts: 0, practiceAttempts: 0, jumps: 0, deaths: 0, orbs: 0, playTime: 0 },
-      settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion, ghost: true, fpsCap: 0, showFps: false },
+      settings: { music: 70, sfx: 80, showPct: true, lowDetail: false, autoCp: true, shake: !reduceMotion, fpsCap: 0, showFps: false },
       char: { icon: 0, c1: 0, c2: 1, trail: 1 },
       profile: { nick: '' },
-      ghosts: {}, ach: {},
+      ach: {}, endless: { best: 0, runs: 0 },
       updatedAt: 0, resetAt: 0,
     };
   }
@@ -46,8 +46,10 @@
     s.settings = merge(d.settings, s.settings);
     s.char = merge(d.char, s.char);
     s.profile = merge(d.profile, s.profile);
+    s.endless = merge(d.endless, s.endless);
     for (const k of ['updatedAt', 'resetAt']) if (typeof s[k] !== 'number') s[k] = 0;
-    for (const k of ['ghosts', 'ach']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};
+    delete s.ghosts; // removed feature
+    for (const k of ['ach']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};
     if (!s.levels || typeof s.levels !== 'object') s.levels = {};
     return s;
   }
@@ -170,6 +172,7 @@
   // Main
   function renderMain() {
     $('mCount').textContent = `${DEFS.length} bölüm · 7 mod`;
+    $('mEndlessBest').textContent = save.endless.best ? `Rekor ${save.endless.best}` : 'Yeni';
     $('mStars').textContent = `★ ${totalStars()}/${maxStars()}`;
     $('mCoins').textContent = `● ${totalCoins()}/${maxCoins()}`;
     renderAccountChip();
@@ -179,6 +182,7 @@
   $('mSettings').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrSettings'); });
   $('mStats').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrStats'); });
   $('mAccount').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrAccount'); });
+  $('mEndless').addEventListener('click', () => { click(); startEndless(); });
   $('mAch').addEventListener('click', () => { ensureAudio(); click(); showScreen('scrAch'); });
   for (const id of ['lvBack', 'gBack', 'sBack', 'stBack', 'acBack', 'achBack']) $(id).addEventListener('click', () => { click(); showScreen('scrMain'); });
 
@@ -351,7 +355,7 @@
   function renderSettings() {
     $('setMusic').value = save.settings.music; $('setSfx').value = save.settings.sfx;
     $('setPct').checked = save.settings.showPct; $('setLow').checked = save.settings.lowDetail;
-    $('setAutoCp').checked = save.settings.autoCp; $('setShake').checked = save.settings.shake; $('setGhost').checked = save.settings.ghost; $('setFps').checked = save.settings.showFps; $('setFpsCap').value = String(save.settings.fpsCap);
+    $('setAutoCp').checked = save.settings.autoCp; $('setShake').checked = save.settings.shake; $('setFps').checked = save.settings.showFps; $('setFpsCap').value = String(save.settings.fpsCap);
     $('resetConfirm').hidden = true;
   }
   function bindVolume(id, key) {
@@ -365,7 +369,7 @@
   }
   $('setFpsCap').addEventListener('change', e => { save.settings.fpsCap = Number(e.target.value) || 0; nextFrameAt = 0; persist(); click(); });
   bindVolume('setMusic', 'music'); bindVolume('setSfx', 'sfx'); bindVolume('pMusic', 'music'); bindVolume('pSfx', 'sfx');
-  for (const [id, key] of [['setPct', 'showPct'], ['setLow', 'lowDetail'], ['setAutoCp', 'autoCp'], ['setShake', 'shake'], ['setGhost', 'ghost'], ['setFps', 'showFps']]) {
+  for (const [id, key] of [['setPct', 'showPct'], ['setLow', 'lowDetail'], ['setAutoCp', 'autoCp'], ['setShake', 'shake'], ['setFps', 'showFps']]) {
     $(id).addEventListener('change', e => { save.settings[key] = e.target.checked; persist(); click(); });
   }
   $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; $('resetNo').focus(); });
@@ -397,23 +401,6 @@
 
 
 
-  // ---------- Ghost of the best run ----------
-  // Physics is deterministic, so a run is just the step numbers where the button changed.
-  function validGhost(gh) {
-    if (!gh || typeof gh !== 'object' || !Array.isArray(gh.t) || gh.t.length > 20000) return null;
-    if (!gh.t.every((v, i) => Number.isInteger(v) && v >= 0 && (i === 0 || v > gh.t[i - 1]))) return null;
-    const pct = typeof gh.pct === 'number' ? Math.max(0, Math.min(100, gh.pct)) : 0;
-    return { pct, h0: !!gh.h0, t: gh.t.slice() };
-  }
-  function storeGhost(pct) {
-    const g = game;
-    if (!g || g.practice || !g.rec) return;
-    const old = save.ghosts[g.def.id];
-    if (old && old.pct >= pct && pct < 100) return;
-    if (old && old.pct >= 100 && pct >= 100 && old.t.length <= g.rec.t.length) return;
-    save.ghosts[g.def.id] = { pct, h0: g.rec.h0, t: g.rec.t.slice() };
-  }
-
   // ---------- Achievements ----------
   const doneCount = () => DEFS.filter(d => lvSave(d.id).done).length;
   const ACH = [
@@ -432,6 +419,7 @@
     { id: 'practice', name: 'Antrenman', desc: 'Bir bölümü pratik modunda bitir', event: c => c.completed && c.practice },
     { id: 'firstTry', name: 'Tek atış', desc: 'Bir bölümü ilk denemede bitir', event: c => c.completed && !c.practice && c.attempt === 1 },
     { id: 'perfect', name: 'Kusursuz', desc: 'Tek koşuda 3 parayı da alıp bölümü bitir', event: c => c.completed && !c.practice && c.runCoins === 3 },
+    { id: 'marathon', name: 'Maratoncu', desc: 'Sonsuz Koşu\'da 1000 blok git', prog: () => [Math.min(save.endless.best, 1000), 1000] },
     { id: 'soClose', name: 'Az kaldı', desc: 'Bir bölümde %95 ya da sonrasında öl', event: c => c.diedAt >= 95 },
   ];
   function checkAch(ctx, silent) {
@@ -510,11 +498,8 @@
     }
     save.updatedAt = Math.max(save.updatedAt, cUpd);
     save.resetAt = Math.max(save.resetAt, cReset);
+    if (c.endless && typeof c.endless === 'object') { save.endless.best = Math.max(save.endless.best, num(c.endless.best)); save.endless.runs = Math.max(save.endless.runs, num(c.endless.runs)); }
     if (c.ach && typeof c.ach === 'object') for (const k of Object.keys(c.ach)) if (ACH.some(a => a.id === k) && !save.ach[k]) save.ach[k] = num(c.ach[k]) || 1;
-    if (c.ghosts && typeof c.ghosts === 'object') for (const k of Object.keys(c.ghosts)) {
-      const gh = validGhost(c.ghosts[k]);
-      if (gh && DEFS.some(d => String(d.id) === k) && (!save.ghosts[k] || gh.pct > save.ghosts[k].pct)) save.ghosts[k] = gh;
-    }
     if (save.char.icon >= R.ICONS.length) save.char.icon = 0;
     if (save.char.c1 >= R.COLORS.length) save.char.c1 = 0;
     if (save.char.c2 >= R.COLORS.length) save.char.c2 = 1;
@@ -523,7 +508,7 @@
   function playerCard() {
     return {
       nick: cleanNick(save.profile.nick) || 'Oyuncu',
-      stars: totalStars(), coins: totalCoins(), done: DEFS.filter(d => lvSave(d.id).done).length,
+      stars: totalStars(), coins: totalCoins(), done: DEFS.filter(d => lvSave(d.id).done).length, endless: save.endless.best,
       icon: save.char.icon, c1: save.char.c1, c2: save.char.c2,
     };
   }
@@ -643,7 +628,7 @@
     const n = v => (typeof v === 'number' && isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
     const rows = Acct.board.map(r => ({
       id: r.id, nick: cleanNick(r.data.nick) || 'Oyuncu', stars: Math.min(n(r.data.stars), maxStars()), coins: Math.min(n(r.data.coins), maxCoins()),
-      done: n(r.data.done), icon: n(r.data.icon) % R.ICONS.length, c1: n(r.data.c1) % R.COLORS.length, c2: n(r.data.c2) % R.COLORS.length,
+      done: n(r.data.done), endless: n(r.data.endless), icon: n(r.data.icon) % R.ICONS.length, c1: n(r.data.c1) % R.COLORS.length, c2: n(r.data.c2) % R.COLORS.length,
     })).sort((a, b) => b.stars - a.stars || b.coins - a.coins || b.done - a.done);
     const ps = Acct.user ? await Acct.user.profiles(rows.map(r => r.id)) : {};
     const list = $('acBoard');
@@ -663,7 +648,7 @@
       who.append(nm, sm);
       const sc = document.createElement('div'); sc.className = 'score';
       const st = document.createElement('b'); st.textContent = r.stars + '★';
-      const co = document.createElement('span'); co.textContent = r.coins + ' para';
+      const co = document.createElement('span'); co.textContent = r.coins + ' para' + (r.endless ? ` · ∞ ${r.endless}` : '');
       sc.append(st, co);
       li.append(rank, c, who, sc);
       list.appendChild(li);
@@ -715,14 +700,24 @@
   let particles = [], rings = [];
   const EMPTY_LEVEL = { blocks: [], spikes: [], saws: [], pads: [], orbs: [], portals: [], coins: [], colors: [], ceilSegs: [], end: 1e9, maxBlockW: 1, maxSawR: 0 };
 
-  function startLevel(idx, practice) {
+  let fixedSeed = null; // tests only
+  const newSeed = () => fixedSeed !== null ? fixedSeed : (Math.random() * 2 ** 31) >>> 0;
+  function endlessLevel(seed) {
+    const def = KKEndless.makeDef(seed), L = KK.buildLevel(def);
+    L.ceilSegs = ceilSegments(L);
+    return [def, L];
+  }
+  function startEndless() { startLevel(-1, false, true); }
+  function startLevel(idx, practice, endless) {
     ensureAudio();
-    lvIndex = idx;
-    const def = DEFS[idx], L = built(def);
+    if (!endless) lvIndex = idx;
+    const [def, L] = endless ? endlessLevel(newSeed()) : [DEFS[idx], built(DEFS[idx])];
     game = {
       idx, def, L, practice, attempt: 0, jumps: 0, runTime: 0, checkpoints: [], cpTimer: 0, lastCpX: -99,
       p: null, rot: 0, deadT: 0, trail: [], ribbon: [], shake: 0, hue: def.hue || 228, groundHue: def.hue || 228, flash: 0,
+      endless: !!endless,
     };
+    $('hudCoins').hidden = !!endless;
     for (const s of SCREENS) $(s).hidden = true;
     $('scrComplete').hidden = true; $('scrPause').hidden = true;
     $('hud').hidden = false;
@@ -742,7 +737,10 @@
     return [h, gh];
   }
   function respawn(fresh) {
-    const g = game, L = g.L, ls = lvSave(g.def.id);
+    const g = game;
+    // Endless mode builds a brand-new course for every attempt.
+    if (g.endless) [g.def, g.L] = endlessLevel(newSeed());
+    const L = g.L, ls = g.endless ? null : lvSave(g.def.id);
     const cp = g.practice && !fresh && g.checkpoints.length ? g.checkpoints[g.checkpoints.length - 1] : null;
     if (cp) { g.p = KK.clonePlayer(cp.p); g.rot = cp.rot; g.lastCpX = cp.p.x; }
     else {
@@ -751,22 +749,12 @@
       if (!g.practice) A.playTrack(g.def.music);
     }
     g.p.holdPrev = holding(); g.p.jumpBuf = 0;
-    // Record this run's input changes; replay the best run's as a ghost (normal mode, from the start only).
-    g.rec = null; g.ghost = null;
-    if (!g.practice && !cp) {
-      g.rec = { h0: g.p.holdPrev, t: [], step: 0, last: g.p.holdPrev };
-      const best = save.ghosts[g.def.id];
-      if (best && save.settings.ghost) {
-        g.ghost = KK.newPlayer(L); g.ghost.holdPrev = best.h0;
-        g.gh = { t: best.t, i: 0, step: 0, input: best.h0 };
-      }
-    }
     g.attempt++;
     if (g.practice) save.stats.practiceAttempts++;
-    else { save.stats.attempts++; ls.attempts++; }
+    else { save.stats.attempts++; if (ls) ls.attempts++; }
     persist();
     g.cpTimer = 0; g.trail = []; g.ribbon = []; particles = []; rings = [];
-    g.prev = null; g.gprev = null;
+    g.prev = null;
     if (auto) auto.i = 0;
     acc = 0; gstate = 'play';
     [g.hue, g.groundHue] = hueAt(L, g.p.x, g.def);
@@ -843,7 +831,7 @@
   $('cpDel').addEventListener('click', e => { e.currentTarget.blur(); removeCheckpoint(); });
 
   function die() {
-    const g = game, ls = lvSave(g.def.id), p = g.p;
+    const g = game, ls = g.endless ? null : lvSave(g.def.id), p = g.p;
     gstate = 'dead'; g.deadT = g.practice ? 0.65 : 1.0;
     save.stats.deaths++;
     if (save.settings.shake) g.shake = 0.6;
@@ -853,13 +841,20 @@
     burst(p.x + p.size / 2, p.y + p.size / 2, ch.c2, 14, 6, 0.7);
     rings.push({ x: p.x + p.size / 2, y: p.y + p.size / 2, r: 0.4, life: 0.5, color: '#ffffff' });
     A.sfx('death');
+    if (g.endless) {
+      const dist = Math.floor(p.x);
+      save.endless.runs++;
+      if (dist > save.endless.best) { if (save.endless.best > 0 || dist >= 50) toast(`Yeni rekor! ${dist} blok`); save.endless.best = dist; }
+      checkAch({});
+      persist();
+      return;
+    }
     const pct = pctOf(p);
     if (g.practice) { if (pct > ls.practice) ls.practice = pct; }
     else if (pct > ls.best) {
       const first = ls.best === 0;
       ls.best = pct;
       if (!first || pct >= 10) toast(`Yeni rekor! %${pct}`);
-      storeGhost(pct);
     }
     checkAch({ diedAt: g.practice ? 0 : pct });
     persist();
@@ -867,7 +862,14 @@
   const pctOf = p => Math.max(0, Math.min(100, Math.floor(p.x / game.L.end * 100)));
 
   function complete() {
-    const g = game, ls = lvSave(g.def.id), p = g.p;
+    const g = game, p = g.p;
+    if (g.endless) {
+      save.endless.best = Math.max(save.endless.best, Math.floor(p.x)); save.endless.runs++;
+      checkAch({}); persist(); A.sfx('win'); toast(`Parkurun sonu! ${Math.floor(p.x)} blok`, 'good');
+      gstate = 'dead'; g.deadT = 1.5;
+      return;
+    }
+    const ls = lvSave(g.def.id);
     gstate = 'complete';
     const before = unlockedSet();
     let earned = '';
@@ -878,7 +880,6 @@
       if (!ls.done) earned = `+${g.def.stars}★`;
       ls.done = true; ls.best = 100;
       for (const idx of p.coins) { if (!ls.coins[idx]) newCoins.push(idx); ls.coins[idx] = true; }
-      storeGhost(100);
     }
     checkAch({ completed: true, practice: g.practice, attempt: g.attempt, runCoins: p.coins.size });
     persist();
@@ -919,11 +920,21 @@
     pausedFrom = gstate;
     gstate = 'paused'; releaseAll();
     persist();
-    const ls = lvSave(game.def.id);
     $('pLevel').textContent = game.def.name;
-    $('pBarN').style.width = ls.best + '%'; $('pPctN').textContent = ls.best + '%';
-    $('pBarP').style.width = ls.practice + '%'; $('pPctP').textContent = ls.practice + '%';
-    $('pAtt').textContent = game.attempt; $('pNow').textContent = pctOf(game.p) + '%';
+    $('pBarP').closest('.lv-bar').hidden = game.endless;
+    $('pPractice').hidden = game.endless;
+    $('pExit').textContent = game.endless ? 'Menüye dön' : 'Bölümlere dön';
+    $('pBarN').closest('.lv-bar').firstElementChild.textContent = game.endless ? 'Rekor' : 'Normal';
+    if (game.endless) {
+      $('pBarN').style.width = Math.min(100, save.endless.best / 20) + '%'; $('pPctN').textContent = save.endless.best;
+      $('pNow').textContent = Math.floor(game.p.x) + ' blok';
+    } else {
+      const ls = lvSave(game.def.id);
+      $('pBarN').style.width = ls.best + '%'; $('pPctN').textContent = ls.best + '%';
+      $('pBarP').style.width = ls.practice + '%'; $('pPctP').textContent = ls.practice + '%';
+      $('pNow').textContent = pctOf(game.p) + '%';
+    }
+    $('pAtt').textContent = game.attempt;
     $('pPractice').textContent = game.practice ? 'Normal moda geç' : 'Pratik modu';
     $('pMusic').value = save.settings.music; $('pSfx').value = save.settings.sfx;
     $('scrPause').hidden = false; $('pResume').focus({ preventScroll: true });
@@ -958,10 +969,11 @@
   $('pExit').addEventListener('click', () => { A.resume(); click(); exitToLevels(); });
   function exitToLevels() {
     persist();
+    const wasEndless = game && game.endless;
     game = null; gstate = 'idle';
     particles = []; rings = [];
     A.playMenu();
-    showScreen('scrLevels');
+    showScreen(wasEndless ? 'scrMain' : 'scrLevels');
   }
 
   // ---------- Update ----------
@@ -977,14 +989,7 @@
         const ev = [];
         const prevMode = g.p.mode;
         const input = auto ? !!auto.actions[Math.floor(auto.i++ / auto.K)] : holding();
-        if (g.rec) { if (input !== g.rec.last) { g.rec.t.push(g.rec.step); g.rec.last = input; } g.rec.step++; }
-        if (g.ghost && !g.ghost.dead && !g.ghost.won) {
-          const gh = g.gh;
-          while (gh.i < gh.t.length && gh.t[gh.i] === gh.step) { gh.input = !gh.input; gh.i++; }
-          KK.step(g.ghost, L, DT, gh.input); gh.step++;
-        }
         g.prev = [g.p.x, g.p.y];
-        if (g.ghost) g.gprev = [g.ghost.x, g.ghost.y];
         KK.step(g.p, L, DT, input, ev);
         if (ev.length) handleEvents(ev);
         if (g.p.dead) { die(); break; }
@@ -1021,9 +1026,16 @@
     g.shake = Math.max(0, g.shake - dt * 2.5);
     g.flash = Math.max(0, g.flash - dt * 1.5);
     // HUD.
-    const pc = gstate === 'complete' ? 100 : pctOf(p);
-    $('barFill').style.width = pc + '%';
-    $('pct').textContent = pc + '%';
+    if (g.endless) {
+      // Bar fills toward your record; the counter shows blocks travelled.
+      const dist = Math.floor(p.x);
+      $('barFill').style.width = Math.min(100, dist / Math.max(100, save.endless.best) * 100) + '%';
+      $('pct').textContent = dist;
+    } else {
+      const pc = gstate === 'complete' ? 100 : pctOf(p);
+      $('barFill').style.width = pc + '%';
+      $('pct').textContent = pc + '%';
+    }
     $('pct').hidden = !save.settings.showPct;
     const coinEls = $('hudCoins').children;
     for (let i = 0; i < 3; i++) coinEls[i].className = p.coins.has(i) ? 'on' : '';
@@ -1174,7 +1186,7 @@
     ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center';
     const y = H * 0.3, size = Math.max(20, Math.min(54, W / 14));
     ctx.font = `${Math.round(size * 0.36)}px Rubik, sans-serif`; ctx.fillStyle = D.color;
-    ctx.fillText(`BÖLÜM ${g.idx + 1} · ${D.label.toLocaleUpperCase('tr')} · ${g.def.stars}★`, W / 2, y - size * 0.95);
+    ctx.fillText(g.endless ? `SONSUZ MOD · REKOR ${save.endless.best} BLOK` : `BÖLÜM ${g.idx + 1} · ${D.label.toLocaleUpperCase('tr')} · ${g.def.stars}★`, W / 2, y - size * 0.95);
     ctx.font = `${Math.round(size)}px Bungee, Impact, sans-serif`;
     ctx.lineWidth = Math.max(3, size * 0.12); ctx.strokeStyle = 'rgba(10,8,30,.85)'; ctx.strokeText(g.def.name, W / 2, y);
     ctx.fillStyle = '#ffd23f'; ctx.fillText(g.def.name, W / 2, y);
@@ -1257,10 +1269,6 @@
         ctx.beginPath(); ctx.arc((r.x - view.camX) * view.PX, view.GY - (r.y - view.camY) * view.PX, r.r * view.PX, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.globalAlpha = 1;
-      if (g.ghost && !g.ghost.dead && gstate !== 'complete') {
-        const gp = g.ghost, grot = gp.mode === 'ship' || gp.mode === 'wave' ? -Math.atan2(gp.vy, gp.speed) : 0;
-        drawPlayer(lerpBody(gp, g.gprev), grot, t, 0.32);
-      }
       const shown = lerpBody(g.p, g.prev);
       if (isRainbow() && gstate !== 'dead') drawRainbowAura(shown, t, beat);
       if (gstate !== 'dead' && !(gstate === 'complete' && g.flash < 0.6)) drawPlayer(shown, g.rot, t, 1, g.squash);
@@ -1313,7 +1321,7 @@
   // Expose a small handle for automated tests.
   window.__kk = {
     get state() { return gstate; }, get screen() { return screen; }, get game() { return game; }, get save() { return save; },
-    startLevel, defs: DEFS, autoplay(actions, K) { auto = actions ? { actions, K, i: 0 } : null; },
+    startLevel, startEndless, defs: DEFS, endlessSeed(v) { fixedSeed = v; }, autoplay(actions, K) { auto = actions ? { actions, K, i: 0 } : null; },
   };
   requestAnimationFrame(frame);
 })();
