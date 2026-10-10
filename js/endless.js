@@ -12,7 +12,7 @@
     { name: 'üçlü', w: 11, tier: 0, speeds: ['normal', 'fast'], build(b, x) { b.spike(x + 4, 0, 3); } },
     { name: 'basamak', w: 12, tier: 0, speeds: ['normal', 'fast', 'faster'], build(b, x) { b.block(x + 4, 0, 3, 1); b.spike(x + 7, 0, 1); } },
     { name: 'merdiven', w: 17, tier: 1, speeds: ['normal', 'fast'], build(b, x) { b.block(x + 4, 0, 3, 1); b.block(x + 7, 0, 3, 2); b.spike(x + 10, 0, 3); } },
-    { name: 'zıplatıcı', w: 16, tier: 1, speeds: ['normal', 'fast'], build(b, x) { b.pad(x + 4); b.spike(x + 5, 0, 5); } },
+    { name: 'zıplatıcı', w: 16, tier: 1, speeds: ['normal', 'fast'], build(b, x) { b.pad(x + 4); b.spike(x + 5, 0, 4); } },
     { name: 'halka', w: 16, tier: 1, speeds: ['normal', 'fast'], build(b, x) { b.spike(x + 4, 0, 6); b.orb(x + 6.5, 2); } },
     { name: 'tavan', w: 18, tier: 2, speeds: ['normal', 'fast'], build(b, x) { b.block(x + 3, 3.4, 12, 1); b.spike(x + 6, 0, 1); b.spike(x + 11, 0, 1); } },
     { name: 'gemi', w: 46, tier: 2, speeds: ['normal', 'fast'], build(b, x) {

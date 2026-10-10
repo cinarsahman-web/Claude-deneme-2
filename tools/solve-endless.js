@@ -14,6 +14,13 @@ for (const c of E.CHUNKS) for (const sp of c.speeds) {
   const r = solve(L, K);
   console.log(`${r.ok ? '✓' : '✗'} ${c.name.padEnd(10)} ${sp.padEnd(7)} ${r.ok ? '' : 'furthest x=' + r.far.toFixed(1)}`);
   if (!r.ok) failed = true;
+  // A pad must carry a player who simply walks onto it (no input) safely over its hazards.
+  if (L.pads.length) {
+    const p = KK.newPlayer(L);
+    while (!p.dead && !p.won) KK.step(p, L, KK.DT, false);
+    console.log(`${p.dead ? '✗' : '✓'} ${c.name.padEnd(10)} ${sp.padEnd(7)} walking onto the pad${p.dead ? ' DIES at x=' + p.x.toFixed(1) : ''}`);
+    if (p.dead) failed = true;
+  }
 }
 for (const seed of [1, 7, 42]) {
   const def = E.makeDef(seed);
